@@ -1,11 +1,16 @@
+// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { fetchBalancesBase, fetchPriceUSDMap, fetchTransfersBase } from "@/lib/data";
 import { computePerTokenStats } from "@/lib/proofOfTime";
-import { Balance, HexAddr, PerTokenStats } from "@/lib/types";
+import type { Balance, HexAddr, PerTokenStats } from "@/lib/types";
 import { createClient } from "@supabase/supabase-js";
 
-// --- Utilities --------------------------------------------------------------
+// Run on Node.js (not Edge) so viem/providers behave consistently on Vercel.
+export const runtime = "nodejs";
+// Avoid caching by the edge/CDN.
+export const dynamic = "force-dynamic";
 
+// --- Utilities --------------------------------------------------------------
 function isHexAddress(s: string): s is HexAddr {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
@@ -28,31 +33,41 @@ export async function POST(req: NextRequest) {
     }
 
     if (!address || !isHexAddress(address)) {
-      return NextResponse.json({ error: "Invalid address (expected 0x...40 hex)" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid address (expected 0x…40 hex)" },
+        { status: 400 }
+      );
     }
 
+    // Supabase (server-side key)
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_KEY;
     if (!url || !key) {
-      return NextResponse.json({ error: "Supabase env missing (URL or SERVICE_KEY)" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Supabase env missing (URL or SERVICE_KEY)" },
+        { status: 500 }
+      );
     }
-
     const supabase = createClient(url, key);
 
-    // Pull on-chain data (Infura via lib/data.ts)
+    // Pull on-chain data
     const [transfers, balances] = await Promise.all([
       fetchTransfersBase(address as HexAddr),
       fetchBalancesBase(address as HexAddr),
     ]);
 
-    // If nothing to work with, short-circuit (still upsert wallet)
+    // Ensure wallet exists in DB even if no balances
     await supabase.from("wallets").upsert({ address }).throwOnError();
 
     if (!balances?.length) {
-      return NextResponse.json({ address, count: 0, note: "No non-zero ERC-20 balances detected on Base." });
+      return NextResponse.json({
+        address,
+        count: 0,
+        note: "No non-zero ERC-20 balances detected on Base.",
+      });
     }
 
-    // Prices for scoring & dust filtering
+    // Prices for scoring & dust filter
     const priceMap = await fetchPriceUSDMap(balances.map((b) => b.token));
 
     const stats: PerTokenStats[] = [];
@@ -90,27 +105,34 @@ export async function POST(req: NextRequest) {
         .upsert(rows, { onConflict: "address,token_address" });
 
       if (error) {
-        return NextResponse.json({ error: `DB upsert failed: ${error.message}` }, { status: 500 });
+        return NextResponse.json(
+          { error: `DB upsert failed: ${error.message}` },
+          { status: 500 }
+        );
       }
     }
 
     return NextResponse.json({ address, count: stats.length });
   } catch (err: any) {
-    console.error("compute error:", err?.message || err);
-    return NextResponse.json({ error: err?.message || "Unknown compute error" }, { status: 500 });
+    // Bubble up a useful message to the client (helps diagnose provider 401/429, etc.)
+    const message = err?.message || String(err);
+    console.error("compute error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // --- GET /api/compute -------------------------------------------------------
 // Handy browser form so you can test without a separate client.
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const u = new URL(req.url);
+  const prefill = u.searchParams.get("address") ?? "";
   return new Response(
     `<!doctype html>
 <html><body style="font-family:system-ui;padding:24px;background:#0B0E14;color:#EDEEF2">
   <h1>Proof of Time – Compute</h1>
   <p>Enter a Base address and we'll compute your relic stats. (This GET page just helps you send a POST.)</p>
   <form onsubmit="event.preventDefault(); run();">
-    <input id="addr" placeholder="0x..." style="padding:8px;border-radius:8px;background:#1a1f2a;color:white;width:420px">
+    <input id="addr" value="${prefill}" placeholder="0x..." style="padding:8px;border-radius:8px;background:#1a1f2a;color:white;width:420px">
     <button style="padding:8px 12px;margin-left:8px;border-radius:8px;">Compute</button>
   </form>
   <pre id="out" style="margin-top:16px;white-space:pre-wrap;"></pre>
@@ -118,9 +140,10 @@ export async function GET() {
     async function run(){
       const address = (document.getElementById('addr').value||'').trim();
       const r = await fetch('', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ address }) });
-      const j = await r.json().catch(()=>({error:'non-json'}));
-      document.getElementById('out').textContent = JSON.stringify(j,null,2);
-      if (j && j.address) location.href = '/relic/' + address;
+      const text = await r.text();
+      let j = null; try { j = JSON.parse(text); } catch (_) {}
+      document.getElementById('out').textContent = j ? JSON.stringify(j,null,2) : text;
+      if (j && j.address && typeof j.count === 'number') location.href = '/relic/' + address;
     }
   </script>
 </body></html>`,
