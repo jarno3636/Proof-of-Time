@@ -1,64 +1,67 @@
-// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { fetchBalancesBase, fetchPriceUSDMap, fetchTransfersBase } from "@/lib/data";
+import {
+  fetchBalancesBase,
+  fetchPriceUSDMap,
+  fetchTransfersViaEtherscan,   // 👈 NEW fast path
+  fetchTransfersBase,            // fallback (slow)
+} from "@/lib/data";
 import { computePerTokenStats } from "@/lib/proofOfTime";
-import type { Balance, HexAddr, PerTokenStats } from "@/lib/types";
+import { Balance, HexAddr, PerTokenStats } from "@/lib/types";
 import { createClient } from "@supabase/supabase-js";
 
-// ✅ Run only on Node.js to avoid silent Edge runtime failures
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+// --- Utilities --------------------------------------------------------------
 
-// --- Utility ---------------------------------------------------------------
 function isHexAddress(s: string): s is HexAddr {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
-// --- POST /api/compute -----------------------------------------------------
+// --- POST /api/compute ------------------------------------------------------
+// Body: { "address": "0x..." } or ?address=0x...
 export async function POST(req: NextRequest) {
   try {
-    // Parse address
+    // Accept address in JSON body or fallback to URLSearchParams (?address=0x..)
     let address: string | undefined;
     try {
-      const body = await req.json();
-      address = body?.address;
+      const j = await req.json();
+      address = j?.address;
     } catch {
-      const q = new URL(req.url).searchParams.get("address");
+      const q = new URL(req.url).searchParams.get("address") || "";
       address = q || undefined;
     }
 
     if (!address || !isHexAddress(address)) {
-      return NextResponse.json({ error: "Invalid address (expected 0x…40 hex)" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid address (expected 0x...40 hex)" }, { status: 400 });
     }
 
-    // Supabase setup
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_KEY;
     if (!url || !key) {
-      return NextResponse.json(
-        { error: "Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY)" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Supabase env missing (URL or SERVICE_KEY)" }, { status: 500 });
     }
     const supabase = createClient(url, key);
 
-    // Fetch blockchain data
-    const [transfers, balances] = await Promise.all([
-      fetchTransfersBase(address as HexAddr),
-      fetchBalancesBase(address as HexAddr),
-    ]);
+    // ---------- FAST PATH: Etherscan v2 ----------
+    // Pull transfers (already timestamped) via Etherscan; if it fails/empty, fallback to on-chain
+    let transfers = await fetchTransfersViaEtherscan(address as HexAddr).catch(() => []);
+    if (!transfers.length) {
+      // Fallback (slower) only if fast path produced nothing
+      transfers = await fetchTransfersBase(address as HexAddr).catch(() => []);
+    }
 
-    // Always ensure wallet record exists
+    // Balances (uses GoldRush + on-chain fallback inside)
+    const balances = await fetchBalancesBase(address as HexAddr).catch(() => []);
+
+    // Ensure wallet record exists even if nothing else was found
     await supabase.from("wallets").upsert({ address }).throwOnError();
 
     if (!balances?.length) {
-      return NextResponse.json({ address, count: 0, note: "No non-zero ERC20 balances found on Base." });
+      return NextResponse.json({ address, count: 0, note: "No non-zero ERC-20 balances detected on Base." });
     }
 
-    // Fetch prices
-    const priceMap = await fetchPriceUSDMap(balances.map(b => b.token));
+    // Prices for scoring & dust filtering
+    const priceMap = await fetchPriceUSDMap(balances.map((b) => b.token)).catch(() => ({} as Record<string, number>));
 
-    // Compute per-token stats
+    // Compute stats
     const stats: PerTokenStats[] = [];
     for (const b of balances as Balance[]) {
       const s = computePerTokenStats(
@@ -71,9 +74,9 @@ export async function POST(req: NextRequest) {
       if (s) stats.push(s);
     }
 
-    // Store results
+    // Persist
     if (stats.length) {
-      const rows = stats.map(s => ({
+      const rows = stats.map((s) => ({
         address,
         token_address: s.token_address,
         symbol: s.symbol,
@@ -95,43 +98,50 @@ export async function POST(req: NextRequest) {
         .upsert(rows, { onConflict: "address,token_address" });
 
       if (error) {
-        console.error("❌ Supabase upsert error:", error.message);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: `DB upsert failed: ${error.message}` }, { status: 500 });
       }
     }
 
     return NextResponse.json({ address, count: stats.length });
   } catch (err: any) {
-    console.error("❌ Compute route crashed:", err);
-    return new Response(
-      `Internal compute error:\n${err?.message || String(err)}`,
-      { status: 500, headers: { "content-type": "text/plain" } }
-    );
+    console.error("compute error:", err?.message || err);
+    return NextResponse.json({ error: err?.message || "Unknown compute error" }, { status: 500 });
   }
 }
 
-// --- GET /api/compute ------------------------------------------------------
-export async function GET(req: NextRequest) {
+// --- GET /api/compute -------------------------------------------------------
+export async function GET() {
   return new Response(
     `<!doctype html>
 <html><body style="font-family:system-ui;padding:24px;background:#0B0E14;color:#EDEEF2">
   <h1>Proof of Time – Compute</h1>
-  <p>Enter a Base address below to test the endpoint (uses POST under the hood).</p>
+  <p>Enter a Base address and we'll compute your relic stats. (This GET page sends a POST.)</p>
   <form onsubmit="event.preventDefault(); run();">
     <input id="addr" placeholder="0x..." style="padding:8px;border-radius:8px;background:#1a1f2a;color:white;width:420px">
-    <button style="padding:8px 12px;margin-left:8px;border-radius:8px;">Compute</button>
+    <button id="btn" style="padding:8px 12px;margin-left:8px;border-radius:8px;">Compute</button>
   </form>
-  <pre id="out" style="margin-top:16px;white-space:pre-wrap;background:#111;padding:12px;border-radius:8px;"></pre>
+  <pre id="out" style="margin-top:16px;white-space:pre-wrap;"></pre>
   <script>
     async function run(){
-      const address = (document.getElementById('addr').value||'').trim();
+      const btn = document.getElementById('btn');
       const out = document.getElementById('out');
+      const address = (document.getElementById('addr').value||'').trim();
       out.textContent = '⏳ Computing for ' + address + ' ...';
+      btn.disabled = true;
       try {
-        const res = await fetch('', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ address }) });
-        const text = await res.text();
-        out.textContent = text;
-      } catch(e){ out.textContent = '❌ Request error: ' + e; }
+        const r = await fetch('', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ address })
+        });
+        const j = await r.json().catch(()=>({error:'non-json'}));
+        out.textContent = JSON.stringify(j,null,2);
+        if (j && j.address) location.href = '/relic/' + address;
+      } catch (e) {
+        out.textContent = '❌ Request error: ' + (e && e.message ? e.message : e);
+      } finally {
+        btn.disabled = false;
+      }
     }
   </script>
 </body></html>`,
