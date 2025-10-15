@@ -1,7 +1,7 @@
 // lib/data.ts
 import { Balance, HexAddr, Transfer } from "./types";
 import { createPublicClient, http, decodeEventLog, Hex, getAddress } from "viem";
-import type { ExtractAbiEvent } from "viem";
+import type { AbiEvent } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 
@@ -34,11 +34,16 @@ const client = createPublicClient({
 const TRANSFER_TOPIC =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
 
-// viem@2: make a literal-typed Transfer event for getLogs({ event })
-type TransferEvent = ExtractAbiEvent<typeof erc20Abi, "Transfer">;
-const transferEvent = erc20Abi.find(
-  (x): x is TransferEvent => x.type === "event" && x.name === "Transfer"
-)!;
+// viem@2: provide a literal-typed Transfer event for getLogs({ event })
+const transferEvent = {
+  type: "event",
+  name: "Transfer",
+  inputs: [
+    { indexed: true,  name: "from",  type: "address" },
+    { indexed: true,  name: "to",    type: "address" },
+    { indexed: false, name: "value", type: "uint256" },
+  ],
+} as const satisfies AbiEvent;
 
 const toLower = (x: string) => (x || "").toLowerCase();
 async function safeRead<T>(p: Promise<T>, fallback: T): Promise<T> {
