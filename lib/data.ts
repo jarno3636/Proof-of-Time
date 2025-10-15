@@ -1,6 +1,7 @@
 // lib/data.ts
 import { Balance, HexAddr, Transfer } from "./types";
 import { createPublicClient, http, decodeEventLog, Hex, getAddress } from "viem";
+import type { AbiEvent } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 
@@ -29,9 +30,14 @@ const client = createPublicClient({
   transport: http(`https://base-mainnet.infura.io/v3/${INFURA_KEY}`),
 });
 
-// keccak256("Transfer(address,address,uint256)") kept for decode fallback
+// (Keep topic constant for decode fallback/reference)
 const TRANSFER_TOPIC =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
+
+// viem@2 requires a concrete AbiEvent for getLogs({ event })
+const transferEvent = erc20Abi.find(
+  (x): x is AbiEvent => x.type === "event" && x.name === "Transfer"
+)!;
 
 const toLower = (x: string) => (x || "").toLowerCase();
 async function safeRead<T>(p: Promise<T>, fallback: T): Promise<T> {
@@ -47,7 +53,7 @@ async function discoverTokensViaEtherscanV2All(address: HexAddr, maxPages = 25):
 
   while (page <= maxPages) {
     const url = new URL("https://api.etherscan.io/v2/api");
-    url.searchParams.set("chainid", "8453");
+    url.searchParams.set("chainid", "8453");          // Base
     url.searchParams.set("module", "account");
     url.searchParams.set("action", "tokentx");
     url.searchParams.set("address", address);
@@ -126,19 +132,19 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
   while (from <= latest) {
     const to = (from + RANGE_SIZE < latest) ? (from + RANGE_SIZE) : latest;
 
-    // ✅ viem@2: use event + args instead of raw topics
+    // viem@2: use event + args (no raw topics)
     const [outLogs, inLogs] = await Promise.all([
       client.getLogs({
         fromBlock: from,
         toBlock: to,
-        event: { abi: erc20Abi, eventName: "Transfer" },
-        args: { from: getAddress(acct) as Hex }
+        event: transferEvent,
+        args: { from: getAddress(acct) }
       }).catch(() => []),
       client.getLogs({
         fromBlock: from,
         toBlock: to,
-        event: { abi: erc20Abi, eventName: "Transfer" },
-        args: { to: getAddress(acct) as Hex }
+        event: transferEvent,
+        args: { to: getAddress(acct) }
       }).catch(() => []),
     ]);
 
