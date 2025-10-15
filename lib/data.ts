@@ -29,6 +29,7 @@ const client = createPublicClient({
   transport: http(`https://base-mainnet.infura.io/v3/${INFURA_KEY}`),
 });
 
+// keccak256("Transfer(address,address,uint256)") kept for decode fallback
 const TRANSFER_TOPIC =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
 
@@ -124,9 +125,21 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
 
   while (from <= latest) {
     const to = (from + RANGE_SIZE < latest) ? (from + RANGE_SIZE) : latest;
+
+    // ✅ viem@2: use event + args instead of raw topics
     const [outLogs, inLogs] = await Promise.all([
-      client.getLogs({ fromBlock: from, toBlock: to, topics: [TRANSFER_TOPIC, (getAddress(acct) as Hex)] }).catch(() => []),
-      client.getLogs({ fromBlock: from, toBlock: to, topics: [TRANSFER_TOPIC, null, (getAddress(acct) as Hex)] }).catch(() => []),
+      client.getLogs({
+        fromBlock: from,
+        toBlock: to,
+        event: { abi: erc20Abi, eventName: "Transfer" },
+        args: { from: getAddress(acct) as Hex }
+      }).catch(() => []),
+      client.getLogs({
+        fromBlock: from,
+        toBlock: to,
+        event: { abi: erc20Abi, eventName: "Transfer" },
+        args: { to: getAddress(acct) as Hex }
+      }).catch(() => []),
     ]);
 
     for (const log of [...outLogs, ...inLogs]) {
@@ -140,7 +153,9 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
           to: toLower(args.to) as HexAddr,
           value: args.value,
           block: Number(log.blockNumber ?? 0n),
-          ts: 0, symbol: "TKN", decimals: 18,
+          ts: 0,
+          symbol: "TKN",
+          decimals: 18,
         });
       } catch {}
     }
