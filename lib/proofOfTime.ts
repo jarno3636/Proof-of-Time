@@ -104,7 +104,7 @@ export function computePerTokenStats(
     last_sell_ts: lastSell ? new Date(lastSell * 1000).toISOString() : null,
     held_since: new Date(heldSince * 1000).toISOString(),
     continuous_hold_days: continuousHoldDays,
-    never_sold,
+    never_sold: neverSold,
     no_sell_streak_days: noSellStreakDays,
     balance_numeric: balanceNow,
     time_score,
