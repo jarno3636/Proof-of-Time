@@ -1,6 +1,6 @@
 // lib/data.ts
 import { Balance, HexAddr, Transfer } from "./types";
-import { createPublicClient, http, decodeEventLog, Hex, getAddress } from "viem";
+import { createPublicClient, http, Hex, getAddress } from "viem";
 import type { AbiEvent } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
@@ -30,7 +30,7 @@ const client = createPublicClient({
   transport: http(`https://base-mainnet.infura.io/v3/${INFURA_KEY}`),
 });
 
-// (Keep topic constant for decode fallback/reference)
+// (Keep topic constant around for reference if needed elsewhere)
 const TRANSFER_TOPIC =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
 
@@ -154,22 +154,19 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
       }).catch(() => []),
     ]);
 
-    for (const log of [...outLogs, ...inLogs]) {
-      try {
-        const decoded = decodeEventLog({ abi: erc20Abi, data: log.data, topics: log.topics as Hex[] });
-        if (decoded.eventName !== "Transfer") continue;
-        const args = decoded.args as { from: Hex; to: Hex; value: bigint };
-        transfers.push({
-          token: toLower(log.address) as HexAddr,
-          from: toLower(args.from) as HexAddr,
-          to: toLower(args.to) as HexAddr,
-          value: args.value,
-          block: Number(log.blockNumber ?? 0n),
-          ts: 0,
-          symbol: "TKN",
-          decimals: 18,
-        });
-      } catch {}
+    for (const log of [...outLogs, ...inLogs] as any[]) {
+      const args = (log as any).args as { from: Hex; to: Hex; value: bigint } | undefined;
+      if (!args) continue;
+      transfers.push({
+        token: toLower((log as any).address) as HexAddr,
+        from: toLower(args.from) as HexAddr,
+        to: toLower(args.to) as HexAddr,
+        value: args.value,
+        block: Number((log as any).blockNumber ?? 0n),
+        ts: 0,
+        symbol: "TKN",
+        decimals: 18,
+      });
     }
     from = to + 1n;
   }
