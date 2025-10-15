@@ -1,9 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
-export const alt = "Proof of Time";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+export const runtime = "edge"; // ok on route handlers
 
 async function fetchTop3(origin: string, address: string) {
   const res = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
@@ -14,10 +11,8 @@ async function fetchTop3(origin: string, address: string) {
 export async function GET(req: Request, { params }: { params: { address: string } }) {
   const { address } = params;
 
-  // Use env if provided; otherwise infer from the incoming request
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    new URL(req.url).origin;
+  // Prefer explicit env, fallback to request origin (works on preview/prod)
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
 
   const data = await fetchTop3(origin, address);
   const items: any[] = Array.isArray(data.tokens) ? data.tokens : [];
@@ -68,6 +63,10 @@ export async function GET(req: Request, { params }: { params: { address: string 
         </div>
       </div>
     ),
-    { ...size }
+    {
+      // 👇 pass size here instead of exporting `size`
+      width: 1200,
+      height: 630,
+    }
   );
 }
