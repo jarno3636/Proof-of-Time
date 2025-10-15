@@ -107,7 +107,7 @@ export function computePerTokenStats(
     never_sold: neverSold,
     no_sell_streak_days: noSellStreakDays,
     balance_numeric: balanceNow,
-    time_score,
+    time_score: timeScore,
   };
 }
 
