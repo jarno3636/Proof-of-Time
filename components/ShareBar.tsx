@@ -33,10 +33,8 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // Altar-wide OG card
   const altarCardUrl = `${site}/api/card/${address}`;
 
-  // Single-relic OG card
   const relicCardUrl = (t: Token) => {
     const params = new URLSearchParams({
       symbol: t.symbol,
@@ -47,7 +45,7 @@ export default function ShareBar({
     return `${site}/api/relic-card?${params.toString()}`;
   };
 
-  /* ---------- Nicer cast/tweet text ---------- */
+  /* ---------- Text formatting ---------- */
   function titleLine(list: Token[]) {
     if (list.length === 1) return "⟡ Relic Revealed";
     if (list.length <= 3) return "⟡ Relics Revealed";
@@ -65,16 +63,24 @@ export default function ShareBar({
     return "Time > hype. #ProofOfTime ⏳";
   }
 
+  function diamondLine() {
+    return "Time to let those diamond hands shine 💎✊";
+  }
+
   function buildText(list: Token[]) {
-    const lines = [titleLine(list), ...list.map(lineFor), closingLine()];
+    const lines = [
+      titleLine(list),
+      ...list.map(lineFor),
+      diamondLine(),
+      closingLine(),
+    ];
     return lines.join("\n");
   }
 
   /* ---------- Farcaster ---------- */
   const shareFC = (text: string, embedUrl: string) => {
-    // Include the URL in the text for better previews across clients.
-    const textWithUrl = `${text}\n${embedUrl}`;
-    const url = buildFarcasterComposeUrl({ text: textWithUrl, embeds: [embedUrl] });
+    // No link in Farcaster post text — only the embedded image
+    const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
     composeCast(url);
   };
 
@@ -94,7 +100,7 @@ export default function ShareBar({
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
-    if (url) params.set("url", url);
+    if (url) params.set("url", url); // keep link for X embeds
     window.open(`${base}?${params.toString()}`, "_blank", "noopener,noreferrer");
   }
 
@@ -109,6 +115,7 @@ export default function ShareBar({
     openXShare(text, embed);
   }, [selected, altarCardUrl]);
 
+  /* ---------- UI ---------- */
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
