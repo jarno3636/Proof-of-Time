@@ -6,24 +6,21 @@ type Tier = "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 
 type Props = {
   symbol: string;
-  tokenAddress: `0x${string}`;        // NEW: for trunc + sharing
+  tokenAddress: `0x${string}`;
   days: number;
   tier: Tier;
   noSell?: number;
   neverSold?: boolean;
 
-  // selection (unchanged)
   selectable?: boolean;
   selected?: boolean;
   onSelect?: (symbol: string) => void;
 
-  // optional per-relic share actions (hook these into your ShareBar if you want)
   onShareFarcaster?: (symbol: string, tokenAddress: string) => void;
   onShareX?: (symbol: string, tokenAddress: string) => void;
 };
 
-/* ─── Visual system ───────────────────────────────────────────────────── */
-
+/* Visual system */
 const tierGlow: Record<Tier, string> = {
   Bronze: "from-amber-800/50 via-amber-500/20 to-yellow-600/20",
   Silver: "from-zinc-300/60 via-slate-200/25 to-zinc-400/20",
@@ -32,7 +29,6 @@ const tierGlow: Record<Tier, string> = {
   Obsidian: "from-slate-900/80 via-slate-800/50 to-slate-700/40",
 };
 
-// Outer disc rim color
 const tierRim: Record<Tier, string> = {
   Bronze: "ring-amber-400/40",
   Silver: "ring-slate-200/50",
@@ -41,7 +37,6 @@ const tierRim: Record<Tier, string> = {
   Obsidian: "ring-slate-500/50",
 };
 
-// Relic “metal” gradients (SVG stops)
 const metalStops: Record<Tier, { a: string; b: string; c: string }> = {
   Bronze:   { a: "#7a4b26", b: "#b07438", c: "#f0c27a" },
   Silver:   { a: "#8e9eab", b: "#cfd9df", c: "#ffffff" },
@@ -54,22 +49,15 @@ function shortAddr(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-/* ─── Tiny SVG that feels “ancient / artifact” and spins ─────────────── */
-
 function RelicDisc({ tier }: { tier: Tier }) {
   const s = metalStops[tier];
   return (
     <motion.div
       aria-hidden
-      className={cn(
-        "relative grid place-items-center rounded-full",
-        "w-16 h-16 ring-2 shadow",
-        tierRim[tier]
-      )}
+      className={cn("relative grid place-items-center rounded-full w-16 h-16 ring-2 shadow", tierRim[tier])}
       animate={{ rotate: 360 }}
       transition={{ ease: "linear", duration: 36, repeat: Infinity }}
     >
-      {/* subtle conic shimmer beneath the SVG */}
       <div
         className="absolute inset-0 rounded-full opacity-60"
         style={{
@@ -91,11 +79,8 @@ function RelicDisc({ tier }: { tier: Tier }) {
           </linearGradient>
         </defs>
 
-        {/* outer coin */}
         <circle cx="28" cy="28" r="26" fill="url(#metal)" />
-        {/* inner bevel */}
         <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
-        {/* star/glyph */}
         <g transform="translate(28 28)">
           <polygon
             points="0,-12 3,-3 12,0 3,3 0,12 -3,3 -12,0 -3,-3"
@@ -107,8 +92,6 @@ function RelicDisc({ tier }: { tier: Tier }) {
     </motion.div>
   );
 }
-
-/* ─── Component ───────────────────────────────────────────────────────── */
 
 export default function RelicCard({
   symbol,
@@ -131,30 +114,19 @@ export default function RelicCard({
         selected && "ring-2 ring-[#BBA46A]"
       )}
     >
-      {/* tier glow */}
-      <div
-        className={cn(
-          "absolute inset-0 blur-2xl opacity-60 bg-gradient-to-br pointer-events-none",
-          tierGlow[tier]
-        )}
-      />
+      <div className={cn("absolute inset-0 blur-2xl opacity-60 bg-gradient-to-br pointer-events-none", tierGlow[tier])} />
 
       <div className="relative flex items-center gap-4">
-        {/* NEW: spinning relic disc */}
         <RelicDisc tier={tier} />
 
-        {/* Token + stats (symbol moved here, not inside spinner) */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="truncate">
               <div className="text-xs uppercase tracking-wider opacity-70">{tier} Relic</div>
               <div className="text-xl font-semibold leading-tight">{symbol.replace(/^(\$)?/, "$")}</div>
-              <div className="mt-0.5 text-[11px] opacity-70 font-mono">
-                {shortAddr(tokenAddress)}
-              </div>
+              <div className="mt-0.5 text-[11px] opacity-70 font-mono">{shortAddr(tokenAddress)}</div>
             </div>
 
-            {/* Optional share controls (hidden if no handlers passed) */}
             {(onShareFarcaster || onShareX) && (
               <div className="flex items-center gap-2">
                 {onShareFarcaster && (
@@ -195,7 +167,6 @@ export default function RelicCard({
         </div>
       </div>
 
-      {/* Selection tick (unchanged) */}
       {selectable && (
         <button
           type="button"
