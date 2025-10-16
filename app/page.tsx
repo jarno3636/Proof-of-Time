@@ -1,4 +1,7 @@
 import Nav from "@/components/Nav";
+import dynamic from "next/dynamic";
+
+const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
 export default function Home() {
   return (
@@ -15,7 +18,7 @@ export default function Home() {
         </p>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-24">
+      <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
             title="Discover Relics"
@@ -30,8 +33,12 @@ export default function Home() {
             text="Show off your will to hold on — not through hype or minting, but by proving your commitment directly from the chain."
           />
         </div>
+      </section>
 
-        <p className="mt-12 text-sm text-zinc-500 max-w-3xl">
+      {/* NEW: scrollable guide */}
+      <section className="mx-auto max-w-6xl px-6 pb-24">
+        <RelicLegend />
+        <p className="mt-10 text-sm text-zinc-500 max-w-3xl">
           Note: Proof of Time currently evaluates ERC-20 holdings on Base. LP positions and
           staked assets are not yet included in relic calculations.
         </p>
@@ -42,7 +49,7 @@ export default function Home() {
 
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-5">
+    <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5">
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-2 text-sm text-zinc-400">{text}</p>
     </div>
