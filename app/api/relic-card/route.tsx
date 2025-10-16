@@ -2,10 +2,10 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-export const runtime = "edge"; // ✅ allowed export for route handlers
+export const runtime = "edge"; // Next.js Edge runtime
 
-// Local constants (don't export!)
-const OG_SIZE = { width: 1200, height: 630 } as const;
+// Render size (pass at construction time)
+const OG = { width: 1200, height: 630 } as const;
 
 type Tier = "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 
@@ -18,10 +18,6 @@ type ApiToken = {
   tier: Tier;
 };
 
-function shortAddr(a: string) {
-  return `${a.slice(0, 6)}…${a.slice(-4)}`;
-}
-
 const tiers: Record<Tier, { ring: string; glowA: string; glowB: string }> = {
   Bronze:   { ring: "#d6a25c", glowA: "#7a4b26", glowB: "#f0c27a" },
   Silver:   { ring: "#cfd6df", glowA: "#8e9eab", glowB: "#ffffff" },
@@ -30,6 +26,11 @@ const tiers: Record<Tier, { ring: string; glowA: string; glowB: string }> = {
   Obsidian: { ring: "#667085", glowA: "#0b0e14", glowB: "#2a2f3a" },
 };
 
+function shortAddr(a: string) {
+  if (!a || a.length < 10) return a || "";
+  return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
 function parseBool(v: string | null): boolean {
   if (!v) return false;
   return ["1", "true", "yes", "y"].includes(v.toLowerCase());
@@ -37,16 +38,18 @@ function parseBool(v: string | null): boolean {
 
 function parseTier(v: string | null): Tier {
   const t = (v || "").trim();
-  if (["Bronze", "Silver", "Gold", "Platinum", "Obsidian"].includes(t)) return t as Tier;
+  if (t === "Bronze" || t === "Silver" || t === "Gold" || t === "Platinum" || t === "Obsidian") {
+    return t;
+  }
   return "Bronze";
 }
 
 async function getFromWallet(
   req: NextRequest,
   address: string,
-  bySymbol?: string,
-  byToken?: string
-) {
+  bySymbol?: string | null,
+  byToken?: string | null
+): Promise<ApiToken | null> {
   const hdrs = req.headers;
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const proto = (hdrs.get("x-forwarded-proto") || "https").split(",")[0].trim();
@@ -54,79 +57,88 @@ async function getFromWallet(
 
   const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
   if (!r.ok) throw new Error(`relic api failed (${r.status})`);
+
   const j = (await r.json()) as { tokens: ApiToken[] };
   const list = Array.isArray(j?.tokens) ? j.tokens : [];
+  if (!list.length) return null;
 
+  // explicit token address wins
   if (byToken) {
     const lo = byToken.toLowerCase();
     const found = list.find((t) => t.token_address?.toLowerCase() === lo);
     if (found) return found;
   }
+  // then symbol
   if (bySymbol) {
-    const found = list.find((t) => t.symbol?.toLowerCase() === bySymbol.toLowerCase());
+    const sym = bySymbol.toLowerCase();
+    const found = list.find((t) => (t.symbol || "").toLowerCase() === sym);
     if (found) return found;
   }
+  // fallback first
   return list[0] || null;
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const url = new URL(req.url);
+    const qp = url.searchParams;
 
-    // Option A: from address altar
-    const address = searchParams.get("address");
-    const qSymbol = searchParams.get("symbol");
-    const qToken = searchParams.get("token");
+    // Option A: derive from an address’ altar
+    const qAddress = qp.get("address") || undefined;
+    const qSymbol  = qp.get("symbol") || undefined;
+    const qToken   = qp.get("token")  || undefined;
 
-    // Option B: direct params
-    const dSymbol = searchParams.get("symbol");
-    const dToken = searchParams.get("token");
-    const dDays = Number(searchParams.get("days") || "");
-    const dNoSell = Number(searchParams.get("noSell") || searchParams.get("nosell") || "");
-    const dNeverSold = parseBool(searchParams.get("neverSold"));
-    const dTier = parseTier(searchParams.get("tier"));
+    // Option B: direct explicit params
+    const dSymbol = qp.get("symbol") || undefined;
+    const dToken  = qp.get("token")  || undefined;
+    const dDays   = Number(qp.get("days") || "");
+    const dNoSell = Number(qp.get("noSell") || qp.get("nosell") || "");
+    const dNever  = parseBool(qp.get("neverSold"));
+    const dTier   = parseTier(qp.get("tier"));
 
     let relic: ApiToken | null = null;
 
-    if (address) {
-      relic = await getFromWallet(req, address, qSymbol || undefined, qToken || undefined);
+    if (qAddress) {
+      relic = await getFromWallet(req, qAddress, qSymbol, qToken);
     } else if (dSymbol && dToken && Number.isFinite(dDays)) {
       relic = {
-        symbol: dSymbol,
+        symbol: dSymbol.toUpperCase(),
         token_address: dToken,
         days: Math.max(0, Math.floor(dDays)),
         no_sell_streak_days: Number.isFinite(dNoSell) ? Math.max(0, Math.floor(dNoSell)) : 0,
-        never_sold: !!dNeverSold,
+        never_sold: !!dNever,
         tier: dTier,
       };
     }
 
-    // Placeholder if nothing resolvable
+    // Fallback placeholder
     if (!relic) {
       return new ImageResponse(
         (
           <div
             style={{
-              width: OG_SIZE.width,
-              height: OG_SIZE.height,
+              width: OG.width,
+              height: OG.height,
               display: "flex",
               background: "#0b0e14",
               color: "#EDEEF2",
               fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto",
               alignItems: "center",
               justifyContent: "center",
+              textAlign: "center",
+              padding: 40,
             }}
           >
-            <div style={{ textAlign: "center" }}>
+            <div>
               <div style={{ fontSize: 72, fontWeight: 900, opacity: 0.9 }}>Proof of Time</div>
-              <div style={{ fontSize: 28, opacity: 0.7, marginTop: 12 }}>
-                Add <code>?address=0x…&symbol=USDC</code> or use direct params like{" "}
+              <div style={{ fontSize: 28, opacity: 0.75, marginTop: 12 }}>
+                Add <code>?address=0x…&symbol=USDC</code> or direct{" "}
                 <code>?symbol=USDC&days=420&tier=Gold&token=0x…</code>
               </div>
             </div>
           </div>
         ),
-        { width: OG_SIZE.width, height: OG_SIZE.height }
+        { width: OG.width, height: OG.height }
       );
     }
 
@@ -141,8 +153,8 @@ export async function GET(req: NextRequest) {
       (
         <div
           style={{
-            width: OG_SIZE.width,
-            height: OG_SIZE.height,
+            width: OG.width,
+            height: OG.height,
             display: "flex",
             background:
               "radial-gradient(1200px 630px at 50% 50%, rgba(255,255,255,0.06), rgba(11,14,20,1) 60%)",
@@ -173,7 +185,7 @@ export async function GET(req: NextRequest) {
               gap: 48,
             }}
           >
-            {/* left: relic disc (static for OG) */}
+            {/* left: relic disc */}
             <div
               style={{
                 width: 260,
@@ -186,7 +198,7 @@ export async function GET(req: NextRequest) {
                   "conic-gradient(from 0deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 30%, rgba(255,255,255,0.14) 60%, rgba(255,255,255,0))",
               }}
             >
-              <svg width="220" height="220" viewBox="0 0 56 56">
+              <svg width="220" height="220" viewBox="0 0 56 56" aria-hidden>
                 <defs>
                   <radialGradient id="metal" cx="50%" cy="50%" r="60%">
                     <stop offset="0%" stopColor="#ffffff" />
@@ -272,7 +284,7 @@ export async function GET(req: NextRequest) {
           </div>
         </div>
       ),
-      { width: OG_SIZE.width, height: OG_SIZE.height }
+      { width: OG.width, height: OG.height }
     );
   } catch (e: any) {
     return new Response(`OG error: ${e?.message || e}`, { status: 500 });
