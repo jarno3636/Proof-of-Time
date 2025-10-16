@@ -1,34 +1,53 @@
 "use client";
 
 import "@rainbow-me/rainbowkit/styles.css";
-import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
+import {
+  RainbowKitProvider,
+  darkTheme,
+  connectorsForWallets,
+} from "@rainbow-me/rainbowkit";
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { base } from "wagmi/chains";
-import { injected, metaMask, coinbaseWallet, walletConnect } from "wagmi/connectors";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const INFURA_KEY = process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
-const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID || ""; // set this in env for WalletConnect to appear
+// ✅ RainbowKit wallet factories (show up as options in the modal)
+import {
+  injectedWallet,        // “Browser Wallet” (Base/Coinbase/MetaMask/Rabby/Rango injections)
+  metaMaskWallet,
+  coinbaseWallet,
+  rainbowWallet,
+  rabbyWallet,
+  walletConnectWallet,
+} from "@rainbow-me/rainbowkit/wallets";
 
-// Include Injected explicitly so it shows up in the RainbowKit modal
-const connectors = [
-  injected({ shimDisconnect: true }),            // Browser / Injected (Farcaster, Base, MetaMask, CBW in-app)
-  metaMask(),                                    // MetaMask (explicit)
-  coinbaseWallet({ appName: "Proof of Time" }),  // Coinbase Wallet
-  ...(WC_PROJECT_ID
-    ? [walletConnect({
-        projectId: WC_PROJECT_ID,
-        showQrModal: true,
-        metadata: {
-          name: "Proof of Time",
-          description: "Relics of on-chain patience on Base.",
-          url: "https://proofoftime.vercel.app",
-          icons: ["https://proofoftime.vercel.app/icon.png"],
-        },
-      })]
-    : []),
+const INFURA_KEY =
+  process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
+const WC_PROJECT_ID =
+  process.env.NEXT_PUBLIC_WC_PROJECT_ID || process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
+
+// ── Wallet groups (you can reorder) ──────────────────────────────────────────
+const wallets = [
+  {
+    groupName: "Popular",
+    wallets: [
+      injectedWallet,
+      metaMaskWallet,
+      coinbaseWallet,
+      rainbowWallet,
+      rabbyWallet,
+      // WalletConnect button only if a projectId is set
+      ...(WC_PROJECT_ID ? [walletConnectWallet] : []),
+    ],
+  },
 ];
 
+// Build wagmi connectors from RainbowKit wallets
+const connectors = connectorsForWallets(wallets, {
+  appName: "Proof of Time",
+  projectId: WC_PROJECT_ID || "stub-project-id", // RainbowKit is happier with a non-empty string; WC won’t be used if modal button omitted
+});
+
+// Wagmi config
 const config = createConfig({
   chains: [base],
   connectors,
@@ -40,14 +59,13 @@ const config = createConfig({
     ),
   },
   ssr: true,
-  // ❌ autoConnect not supported here in wagmi v2 — use reconnectOnMount on the provider below
 });
 
 const qc = new QueryClient();
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    // ✅ This enables auto-reconnect to the last used connector (incl. Injected) after disconnect/refresh
+    // ✅ Reconnects to last-used connector on mount (works with Injected too)
     <WagmiProvider config={config} reconnectOnMount>
       <QueryClientProvider client={qc}>
         <RainbowKitProvider
