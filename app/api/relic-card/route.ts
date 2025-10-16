@@ -41,7 +41,12 @@ function parseTier(v: string | null): Tier {
   return "Bronze";
 }
 
-async function getFromWallet(req: NextRequest, address: string, bySymbol?: string, byToken?: string) {
+async function getFromWallet(
+  req: NextRequest,
+  address: string,
+  bySymbol?: string,
+  byToken?: string
+) {
   const hdrs = req.headers;
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const proto = (hdrs.get("x-forwarded-proto") || "https").split(",")[0].trim();
