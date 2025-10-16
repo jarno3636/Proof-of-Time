@@ -1,7 +1,7 @@
 "use client";
 import RelicCard from "./RelicCard";
 
-type Item = {
+export type Item = {
   symbol: string;
   days: number;
   no_sell_streak_days: number;
@@ -17,7 +17,7 @@ export default function RelicAltar({
 }: {
   items: Item[];
   selectable?: boolean;
-  selected?: string[]; // symbols selected
+  selected?: string[];           // array of selected symbols
   onToggle?: (symbol: string) => void;
 }) {
   return (
