@@ -4,11 +4,12 @@ import { useCallback, useMemo } from "react";
 import { buildFarcasterComposeUrl, composeCast } from "@/lib/miniapp";
 
 type Token = {
-  token_address: string;
+  token_address: `0x${string}`;
   symbol: string;
   days: number;
   no_sell_streak_days: number;
   never_sold: boolean;
+  tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian"; // optional for safety
 };
 
 export default function ShareBar({
@@ -28,6 +29,23 @@ export default function ShareBar({
     [tokens, selectedSymbols]
   );
 
+  const site =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
+  const altarCardUrl = `${site}/api/card/${address}`;
+
+  // Build a single-relic OG card URL
+  const relicCardUrl = (t: Token) => {
+    const params = new URLSearchParams({
+      symbol: t.symbol,
+      days: String(t.days ?? 0),
+      tier: t.tier || "Bronze",
+      token: t.token_address,
+    });
+    return `${site}/api/relic-card?${params.toString()}`;
+  };
+
   const makeText = (list: Token[]) => {
     const parts = list.map(
       (t) =>
@@ -38,42 +56,43 @@ export default function ShareBar({
     return `Proof of Time: ${parts.join(" • ")}\nTime > hype. #ProofOfTime ⏳`;
   };
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
-  const cardUrlAll = `${site}/api/card/${address}`;
-
-  // ---------- Farcaster (altar / selected) ----------
-  const shareAllFC = useCallback(() => {
-    const text = makeText(tokens);
-    const url = buildFarcasterComposeUrl({ text, embeds: [cardUrlAll] });
+  // -------- Farcaster helpers ----------
+  const shareFC = (text: string, embedUrl: string) => {
+    const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
     composeCast(url);
-  }, [tokens, cardUrlAll]);
+  };
+
+  const shareAllFC = useCallback(() => {
+    shareFC(makeText(tokens), altarCardUrl);
+  }, [tokens, altarCardUrl]);
 
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     const text = makeText(selected);
-    const url = buildFarcasterComposeUrl({ text, embeds: [cardUrlAll] });
-    composeCast(url);
-  }, [selected, cardUrlAll]);
+    const embed =
+      selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
+    shareFC(text, embed);
+  }, [selected, altarCardUrl]);
 
-  // ---------- X / Twitter (altar / selected) ----------
+  // -------- X (Twitter) helpers ----------
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
-    const params = new URLSearchParams({
-      text,
-      ...(url ? { url } : {}),
-    });
-    const shareUrl = `${base}?${params.toString()}`;
-    window.open(shareUrl, "_blank", "noopener,noreferrer");
+    const params = new URLSearchParams({ text });
+    if (url) params.set("url", url);
+    window.open(`${base}?${params.toString()}`, "_blank", "noopener,noreferrer");
   }
 
   const shareAllX = useCallback(() => {
-    openXShare(makeText(tokens), cardUrlAll);
-  }, [tokens, cardUrlAll]);
+    openXShare(makeText(tokens), altarCardUrl);
+  }, [tokens, altarCardUrl]);
 
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(makeText(selected), cardUrlAll);
-  }, [selected, cardUrlAll]);
+    const text = makeText(selected);
+    const embed =
+      selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
+    openXShare(text, embed);
+  }, [selected, altarCardUrl]);
 
   return (
     <div className="mt-6 space-y-2">
