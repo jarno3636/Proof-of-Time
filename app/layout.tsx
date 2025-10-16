@@ -1,10 +1,56 @@
+// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
+import type { Metadata } from "next";
 
-export const metadata = { title: "Proof of Time" };
+const cinzel = Cinzel({ subsets: ["latin"], weight: ["400", "600", "700"] });
 
-const cinzel = Cinzel({ subsets: ["latin"], weight: ["400","600","700"] });
+const site =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (typeof window === "undefined" ? "https://your-site.example" : window.location.origin);
+
+export const metadata: Metadata = {
+  metadataBase: new URL(site),
+  title: {
+    default: "Proof of Time",
+    template: "%s · Proof of Time",
+  },
+  description: "Your longest-held tokens on Base. Time > hype.",
+  applicationName: "Proof of Time",
+  keywords: ["Base", "crypto", "onchain", "holder", "relics", "OG image"],
+  authors: [{ name: "Proof of Time" }],
+  openGraph: {
+    type: "website",
+    title: "Proof of Time",
+    description: "Your longest-held tokens on Base. Time > hype.",
+    url: site,
+    siteName: "Proof of Time",
+    images: [
+      // Fallback. Per-user/per-relic cards are served via /api/card/[address] and /api/relic-card
+      { url: "/og.png", width: 1200, height: 630, alt: "Proof of Time" },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Proof of Time",
+    description: "Your longest-held tokens on Base. Time > hype.",
+    images: ["/og.png"],
+    creator: "@", // optional: add your handle
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png" }],
+  },
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
