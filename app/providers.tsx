@@ -25,14 +25,12 @@ const transports = {
 };
 
 const connectors = [
-  // Prefer injected first (covers Farcaster in-app & Base/Coinbase wallet browsers)
-  injected({ shimDisconnect: true }),
-
-  // Explicit popular wallets
+  injected({ shimDisconnect: true }), // covers Farcaster in-app & Base/Coinbase browsers
   metaMask({ dappMetadata: { name: "Proof of Time" } }),
   coinbaseWallet({
     appName: "Proof of Time",
-    preference: "all", // supports Base/Coinbase Wallet variants
+    // preference can be 'all' | 'smartWalletOnly' | 'eoaOnly'
+    preference: "all",
   }),
   ...(WC_PROJECT_ID
     ? [
@@ -54,7 +52,6 @@ const config = createConfig({
   chains: [base],
   transports,
   connectors,
-  autoConnect: true, // 🔒 restores last session & enables smooth injected flows
   multiInjectedProviderDiscovery: true,
   ssr: true,
 });
@@ -63,7 +60,7 @@ const qc = new QueryClient();
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={config} reconnectOnMount>
       <QueryClientProvider client={qc}>
         <RainbowKitProvider
           initialChain={base}
