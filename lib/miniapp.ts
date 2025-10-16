@@ -1,61 +1,71 @@
-// Enhanced Farcaster Mini-App helpers for Proof of Time
-// Works with Warpcast, Neynar, or the upcoming @farcaster/miniapp-sdk.
+// lib/miniapp.ts
+// MiniApp helpers with ZERO hard dependency on external SDKs.
+// Works in Warpcast MiniApp if available, otherwise falls back to web.
 
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ??
   (typeof window !== "undefined" ? window.location.origin : "");
 
-// If you ever host a separate frame-only domain, set NEXT_PUBLIC_MINIAPP_URL.
-// For now we reuse the main site URL.
 export const MINIAPP_URL =
   process.env.NEXT_PUBLIC_MINIAPP_URL ?? SITE_URL;
 
-/** Detect if running inside Warpcast or Farcaster in-app webview. */
-export function isFarcasterUA(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  return /Farcaster|Warpcast/i.test(ua);
+/** Detect MiniApp runtime via global (preferred) or UA (fallback). */
+export function isMiniApp(): boolean {
+  const g: any = typeof window !== "undefined" ? (window as any) : undefined;
+  const hasGlobal = !!g?.farcaster?.miniapp || !!g?.miniapp;
+  if (hasGlobal) return true;
+  if (typeof navigator !== "undefined") {
+    return /Farcaster|Warpcast/i.test(navigator.userAgent || "");
+  }
+  return false;
 }
 
-/** Build a Warpcast compose URL with optional embeds. */
-export function buildFarcasterComposeUrl(opts: { text?: string; embeds?: string[] }) {
+/** Safely access the MiniApp SDK if injected by Warpcast. */
+function getMiniApp() {
+  const g: any = typeof window !== "undefined" ? (window as any) : undefined;
+  // Warpcast commonly puts it on window.farcaster.miniapp
+  return g?.farcaster?.miniapp || g?.miniapp || null;
+}
+
+/** Let the container know we're ready (no-op in normal browsers). */
+export async function signalMiniAppReady() {
+  try {
+    const mini = getMiniApp();
+    await mini?.actions?.ready?.();
+  } catch {
+    // ignore
+  }
+}
+
+/** Build Warpcast web composer URL (fallback when native composer not available). */
+export function buildFarcasterComposeUrl(opts: { text: string; embeds?: string[] }) {
   const params = new URLSearchParams();
   if (opts.text) params.set("text", opts.text);
-  (opts.embeds ?? []).forEach((e) => params.append("embeds[]", e));
+  if (opts.embeds?.length) {
+    for (const e of opts.embeds) params.append("embeds[]", e);
+  }
   return `https://warpcast.com/~/compose?${params.toString()}`;
 }
 
 /**
- * Compose a cast, preferring Farcaster MiniApp SDK if present,
- * otherwise opening the Warpcast composer as fallback.
+ * Compose a cast:
+ * - If inside MiniApp with native composer → uses it.
+ * - Else → falls back to Warpcast web composer URL.
  */
-export async function composeCast(opts: { text?: string; embeds?: string[] }) {
-  if (typeof window === "undefined") return;
+export function composeCast(arg: string | { text: string; embeds?: string[] }) {
+  const mini = getMiniApp();
+  const isObj = typeof arg === "object";
+  const text = isObj ? (arg.text || "") : "";
+  const embeds = isObj ? arg.embeds : undefined;
 
-  try {
-    const miniapp = (await import("@farcaster/miniapp-sdk")).default;
-
-    // If running inside Warpcast or MiniApp webview, prefer native composer
-    if (miniapp?.isInMiniApp?.() || isFarcasterUA()) {
-      await miniapp?.actions?.composeCast?.(opts);
-      return;
-    }
-  } catch {
-    // Ignore — fallback below
+  if (mini?.actions?.composeCast) {
+    // Use native miniapp composer (keeps users inside Warpcast)
+    return mini.actions.composeCast({ text, embeds });
   }
 
-  // Fallback: open the Warpcast web composer
-  const url = buildFarcasterComposeUrl(opts);
-  window.location.href = url;
-}
-
-/** Optional helper to mark readiness when running as a MiniApp. */
-export async function signalMiniAppReady() {
-  if (typeof window === "undefined") return;
-  try {
-    const miniapp = (await import("@farcaster/miniapp-sdk")).default;
-    await miniapp?.actions?.ready?.();
-  } catch {
-    /* no-op */
+  // Fallback: open Warpcast web composer (new tab / redirect)
+  const url = isObj ? buildFarcasterComposeUrl({ text, embeds }) : arg;
+  if (typeof window !== "undefined") {
+    window.location.href = url;
   }
 }
