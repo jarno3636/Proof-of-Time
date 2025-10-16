@@ -1,4 +1,4 @@
-/* app/api/relic-card/route.ts */
+/* app/api/relic-card/route.tsx */
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
@@ -22,7 +22,6 @@ function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-/** Tier palettes */
 const tiers: Record<Tier, { ring: string; glowA: string; glowB: string }> = {
   Bronze:   { ring: "#d6a25c", glowA: "#7a4b26", glowB: "#f0c27a" },
   Silver:   { ring: "#cfd6df", glowA: "#8e9eab", glowB: "#ffffff" },
@@ -43,7 +42,6 @@ function parseTier(v: string | null): Tier {
 }
 
 async function getFromWallet(req: NextRequest, address: string, bySymbol?: string, byToken?: string) {
-  // Build origin safely (works on Vercel)
   const hdrs = req.headers;
   const host = hdrs.get("x-forwarded-host") || hdrs.get("host");
   const proto = (hdrs.get("x-forwarded-proto") || "https").split(",")[0].trim();
@@ -60,11 +58,9 @@ async function getFromWallet(req: NextRequest, address: string, bySymbol?: strin
     if (found) return found;
   }
   if (bySymbol) {
-    // prefer exact symbol match (case-insensitive)
     const found = list.find((t) => t.symbol?.toLowerCase() === bySymbol.toLowerCase());
     if (found) return found;
   }
-  // fallback to top relic if nothing matched
   return list[0] || null;
 }
 
@@ -72,7 +68,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
 
-    // Option A: fetch from wallet altar
+    // Option A: from address altar
     const address = searchParams.get("address");
     const qSymbol = searchParams.get("symbol");
     const qToken = searchParams.get("token");
@@ -92,7 +88,7 @@ export async function GET(req: NextRequest) {
     } else if (dSymbol && dToken && Number.isFinite(dDays)) {
       relic = {
         symbol: dSymbol,
-        token_address: dToken as `0x${string}`,
+        token_address: dToken,
         days: Math.max(0, Math.floor(dDays)),
         no_sell_streak_days: Number.isFinite(dNoSell) ? Math.max(0, Math.floor(dNoSell)) : 0,
         never_sold: !!dNeverSold,
@@ -101,7 +97,6 @@ export async function GET(req: NextRequest) {
     }
 
     if (!relic) {
-      // graceful placeholder if nothing to render
       return new ImageResponse(
         (
           <div
@@ -119,7 +114,8 @@ export async function GET(req: NextRequest) {
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 72, fontWeight: 900, opacity: 0.9 }}>Proof of Time</div>
               <div style={{ fontSize: 28, opacity: 0.7, marginTop: 12 }}>
-                Add <code>?address=0x…&symbol=USDC</code> or direct params like <code>?symbol=USDC&days=420&tier=Gold&token=0x…</code>
+                Add <code>?address=0x…&symbol=USDC</code> or use direct params like{" "}
+                <code>?symbol=USDC&days=420&tier=Gold&token=0x…</code>
               </div>
             </div>
           </div>
@@ -135,7 +131,6 @@ export async function GET(req: NextRequest) {
         ? `No-sell ${relic.no_sell_streak_days}d`
         : "";
 
-    // Compose image
     return new ImageResponse(
       (
         <div
@@ -150,7 +145,7 @@ export async function GET(req: NextRequest) {
             position: "relative",
           }}
         >
-          {/* subtle background glow */}
+          {/* background glow */}
           <div
             style={{
               position: "absolute",
@@ -172,7 +167,7 @@ export async function GET(req: NextRequest) {
               gap: 48,
             }}
           >
-            {/* Left: Spinning Relic Disc (static look in OG) */}
+            {/* left: relic disc (static for OG) */}
             <div
               style={{
                 width: 260,
@@ -185,7 +180,6 @@ export async function GET(req: NextRequest) {
                   "conic-gradient(from 0deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 30%, rgba(255,255,255,0.14) 60%, rgba(255,255,255,0))",
               }}
             >
-              {/* Inner coin */}
               <svg width="220" height="220" viewBox="0 0 56 56">
                 <defs>
                   <radialGradient id="metal" cx="50%" cy="50%" r="60%">
@@ -199,14 +193,7 @@ export async function GET(req: NextRequest) {
                   </linearGradient>
                 </defs>
                 <circle cx="28" cy="28" r="26" fill="url(#metal)" />
-                <circle
-                  cx="28"
-                  cy="28"
-                  r="22"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.25)"
-                  strokeWidth="1.5"
-                />
+                <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
                 <g transform="translate(28 28)">
                   <polygon
                     points="0,-12 3,-3 12,0 3,3 0,12 -3,3 -12,0 -3,-3"
@@ -217,7 +204,7 @@ export async function GET(req: NextRequest) {
               </svg>
             </div>
 
-            {/* Right: Text block */}
+            {/* right: text */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 22, letterSpacing: 2, opacity: 0.7, textTransform: "uppercase" }}>
