@@ -1,6 +1,6 @@
 "use client";
-import RelicCard from "./RelicCard";
 import cn from "clsx";
+import RelicCard from "./RelicCard";
 
 export type Item = {
   token_address: `0x${string}`;
