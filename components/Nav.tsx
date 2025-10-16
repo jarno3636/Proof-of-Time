@@ -9,53 +9,70 @@ function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-const LAST_CONNECTOR_KEY = "pot_last_connector"; // 'injected' | 'walletconnect' | 'coinbaseWallet' | etc.
+const LAST_CONNECTOR_KEY = "pot_last_connector"; // 'injected' | 'walletConnect' | 'coinbaseWallet' | etc.
 
 export default function Nav() {
-  const { address, status: accountStatus, isConnecting } = useAccount();
+  // Persist the connector on every successful connect (works for modal or programmatic)
+  const { address, status: accountStatus, isConnecting, connector } = useAccount({
+    onConnect(data) {
+      try {
+        const id =
+          (data.connector as any)?.type ||
+          (data.connector as any)?.id ||
+          "unknown";
+        localStorage.setItem(LAST_CONNECTOR_KEY, String(id));
+      } catch {}
+    },
+    onDisconnect() {
+      // keep LAST_CONNECTOR_KEY so we know what to auto-reconnect with
+    },
+  });
+
   const { connectAsync, status: connectStatus } = useConnect();
   const connectors = useConnectors();
 
-  // Prefer an injected connector for one-click flows (Farcaster/Base/MetaMask/CBW)
+  // Prefer injected for one-click (Farcaster in-app, Base/Coinbase browsers, MetaMask)
   const injected = connectors.find((c) => c.type === "injected");
 
-  // “Can quick connect” if we’re not already connected & an injected provider is present/ready
-  const canQuickConnect =
-    !address && !!injected && (injected as any).ready !== false;
+  // if we’re not connected and there’s *any* window.ethereum, allow quick attempt even if ready flag lies
+  const hasWindowEth =
+    typeof window !== "undefined" &&
+    !!(window as any).ethereum &&
+    !Array.isArray((window as any).ethereum);
 
-  // Prevent repeated auto-attempts in a tight loop
+  const canQuickConnect =
+    !address && (!!injected && ((injected as any).ready !== false || hasWindowEth));
+
+  // Prevent repeated auto attempts per disconnection
   const triedAutoReconnectRef = useRef(false);
 
-  // Soft auto-reconnect after a manual disconnect if the last session used injected.
+  // One-shot auto-reconnect with injected after a disconnect if that was the last connector
   useEffect(() => {
     if (accountStatus !== "disconnected") {
-      // Reset guard whenever we’re not in a disconnected state
       triedAutoReconnectRef.current = false;
       return;
     }
-
-    // Only try once per disconnection
     if (triedAutoReconnectRef.current) return;
 
-    const last = (typeof window !== "undefined"
-      ? localStorage.getItem(LAST_CONNECTOR_KEY)
-      : null) as string | null;
+    const last =
+      (typeof window !== "undefined"
+        ? localStorage.getItem(LAST_CONNECTOR_KEY)
+        : null) || "";
 
-    if (last === "injected" && injected && (injected as any).ready !== false) {
+    if (last.toLowerCase() === "injected" && injected) {
       triedAutoReconnectRef.current = true;
-      // Small delay so the UI settles after the disconnect modal closes
       const t = setTimeout(async () => {
         try {
           await connectAsync({ connector: injected });
         } catch {
-          // no worries—user can click the button to open the modal
+          // ignore; user can click the button to open the modal
         }
-      }, 250);
+      }, 200);
       return () => clearTimeout(t);
     }
   }, [accountStatus, connectAsync, injected]);
 
-  // ⟡ Brand button (forces same look connected/disconnected)
+  // ⟡ Brand button (same look for both states)
   const baseBtn =
     "inline-flex items-center gap-2 rounded-xl " +
     "bg-[#BBA46A] hover:bg-[#d6c289] " +
@@ -63,7 +80,7 @@ export default function Nav() {
     "text-[#0b0e14] transition " +
     "disabled:opacity-60 disabled:cursor-not-allowed " +
     "focus:outline-none focus:ring-2 focus:ring-[#BBA46A]/40 " +
-    "[appearance:none]"; // prevent UA styling overriding color in some browsers
+    "[appearance:none]";
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-black/20 bg-black/5 border-b border-white/10">
@@ -87,7 +104,6 @@ export default function Nav() {
             </Link>
           )}
 
-          {/* Custom Connect so both states share identical styling */}
           <ConnectButton.Custom>
             {({
               account,
@@ -110,14 +126,12 @@ export default function Nav() {
                 // Try injected first for one-click flows
                 if (!connected && canQuickConnect && injected) {
                   try {
-                    const res = await connectAsync({ connector: injected });
-                    // remember last connector if connect succeeded
-                    if (typeof window !== "undefined") {
-                      localStorage.setItem(LAST_CONNECTOR_KEY, "injected");
-                    }
-                    return res;
+                    await connectAsync({ connector: injected });
+                    // record it for future auto-reconnects
+                    localStorage.setItem(LAST_CONNECTOR_KEY, "injected");
+                    return;
                   } catch {
-                    // fall back to modal if quick connect fails
+                    // fall through to modal
                   }
                 }
                 openConnectModal?.();
@@ -144,7 +158,7 @@ export default function Nav() {
                 );
               }
 
-              // Connected state — chain & account use the exact same brand styles
+              // Connected state — same brand styling
               return (
                 <div className="flex items-center gap-2">
                   <button
@@ -175,8 +189,6 @@ export default function Nav() {
                     type="button"
                     aria-label="Account"
                     title="Account"
-                    // When they disconnect from this modal, the useEffect above will
-                    // auto-attempt injected again if that was the last connector.
                   >
                     {account?.displayName ||
                       (address ? short(address) : "Account")}
