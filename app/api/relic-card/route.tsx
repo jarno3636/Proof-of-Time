@@ -2,10 +2,10 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-export const runtime = "edge";
-export const alt = "Relic Card";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+export const runtime = "edge"; // ✅ allowed export for route handlers
+
+// Local constants (don't export!)
+const OG_SIZE = { width: 1200, height: 630 } as const;
 
 type Tier = "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 
@@ -101,13 +101,14 @@ export async function GET(req: NextRequest) {
       };
     }
 
+    // Placeholder if nothing resolvable
     if (!relic) {
       return new ImageResponse(
         (
           <div
             style={{
-              width: size.width,
-              height: size.height,
+              width: OG_SIZE.width,
+              height: OG_SIZE.height,
               display: "flex",
               background: "#0b0e14",
               color: "#EDEEF2",
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
             </div>
           </div>
         ),
-        { ...size }
+        { width: OG_SIZE.width, height: OG_SIZE.height }
       );
     }
 
@@ -140,8 +141,8 @@ export async function GET(req: NextRequest) {
       (
         <div
           style={{
-            width: size.width,
-            height: size.height,
+            width: OG_SIZE.width,
+            height: OG_SIZE.height,
             display: "flex",
             background:
               "radial-gradient(1200px 630px at 50% 50%, rgba(255,255,255,0.06), rgba(11,14,20,1) 60%)",
@@ -271,7 +272,7 @@ export async function GET(req: NextRequest) {
           </div>
         </div>
       ),
-      { ...size }
+      { width: OG_SIZE.width, height: OG_SIZE.height }
     );
   } catch (e: any) {
     return new Response(`OG error: ${e?.message || e}`, { status: 500 });
