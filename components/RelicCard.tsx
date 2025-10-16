@@ -8,8 +8,6 @@ type Props = {
   tier: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
   noSell?: number;
   neverSold?: boolean;
-
-  // selection UX
   selectable?: boolean;
   selected?: boolean;
   onSelect?: (symbol: string) => void;
@@ -35,7 +33,7 @@ export default function RelicCard({
 }: Props) {
   return (
     <button
-      type={selectable ? "button" : "button"}
+      type="button"
       onClick={() => selectable && onSelect?.(symbol)}
       className={cn(
         "relative rounded-2xl p-4 bg-[#0B0E14] text-[#EDEEF2] ring-1 ring-white/10 shadow-inner overflow-hidden text-left",
@@ -68,9 +66,7 @@ export default function RelicCard({
             {neverSold ? (
               <span className="px-2 py-0.5 rounded-full bg-white/10">Never sold</span>
             ) : typeof noSell === "number" ? (
-              <span className="px-2 py-0.5 rounded-full bg-white/10">
-                No-sell {noSell}d
-              </span>
+              <span className="px-2 py-0.5 rounded-full bg-white/10">No-sell {noSell}d</span>
             ) : null}
           </div>
         </div>
