@@ -20,7 +20,7 @@ export default function RelicAltar({
 }: {
   items: Item[];
   selectable?: boolean;
-  selected?: string[];                  // array of selected symbols
+  selected?: string[];
   onToggle?: (symbol: string) => void;
   className?: string;
 }) {
@@ -33,10 +33,7 @@ export default function RelicAltar({
         className
       )}
     >
-      {/* subtle altar glow */}
       <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-white/[0.06] to-transparent opacity-50" />
-
-      {/* altar header strip */}
       <div className="relative mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A]" />
@@ -49,7 +46,6 @@ export default function RelicAltar({
         </div>
       </div>
 
-      {/* grid of relics */}
       <div className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((it) => (
           <RelicCard
