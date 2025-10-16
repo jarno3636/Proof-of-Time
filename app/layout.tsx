@@ -2,14 +2,37 @@
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
-const cinzel = Cinzel({ subsets: ["latin"], weight: ["400", "600", "700"] });
+// ---- Resolve a stable absolute site URL on the server (no `window`) ----
+function getSiteUrl() {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (env) return env; // e.g. https://proof-of-time.xyz
 
-const site =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (typeof window === "undefined" ? "https://your-site.example" : window.location.origin);
+  // Vercel fallback (preview/prod)
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel}`;
 
+  // Local dev
+  return "http://localhost:3000";
+}
+const site = getSiteUrl();
+
+// ---- Font ----
+const cinzel = Cinzel({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  display: "swap",
+});
+
+// ---- Viewport (good for mobile meta) ----
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0b0e14",
+};
+
+// ---- Metadata (evaluated server-side; safe to use `site`) ----
 export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: {
@@ -27,7 +50,7 @@ export const metadata: Metadata = {
     url: site,
     siteName: "Proof of Time",
     images: [
-      // Fallback. Per-user/per-relic cards are served via /api/card/[address] and /api/relic-card
+      // Global fallback — your per-user/per-relic images come from /api/card/[address] & /api/relic-card
       { url: "/og.png", width: 1200, height: 630, alt: "Proof of Time" },
     ],
   },
@@ -36,7 +59,8 @@ export const metadata: Metadata = {
     title: "Proof of Time",
     description: "Your longest-held tokens on Base. Time > hype.",
     images: ["/og.png"],
-    creator: "@", // optional: add your handle
+    // Set your handle if you want attribution on shares:
+    // creator: "@your_handle",
   },
   icons: {
     icon: [
@@ -46,15 +70,22 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png" }],
   },
   themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
-  robots: {
-    index: true,
-    follow: true,
+  robots: { index: true, follow: true },
+  alternates: { canonical: site },
+  // You can add frame defaults here if you really want global tags,
+  // but it's better to emit frame meta per-frame route HTML response.
+  other: {
+    // Example (commented): "fc:frame": "vNext",
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Perf: preconnect to Google Fonts */}
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      </head>
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
         {/* Subtle “temple” backdrop */}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
