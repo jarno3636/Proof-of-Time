@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { useAccount, useConnect, useConnectors } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
@@ -8,15 +9,51 @@ function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+const LAST_CONNECTOR_KEY = "pot_last_connector"; // 'injected' | 'walletconnect' | 'coinbaseWallet' | etc.
+
 export default function Nav() {
-  const { address, isConnecting } = useAccount();
+  const { address, status: accountStatus, isConnecting } = useAccount();
   const { connectAsync, status: connectStatus } = useConnect();
   const connectors = useConnectors();
 
   // Prefer an injected connector for one-click flows (Farcaster/Base/MetaMask/CBW)
   const injected = connectors.find((c) => c.type === "injected");
+
+  // “Can quick connect” if we’re not already connected & an injected provider is present/ready
   const canQuickConnect =
     !address && !!injected && (injected as any).ready !== false;
+
+  // Prevent repeated auto-attempts in a tight loop
+  const triedAutoReconnectRef = useRef(false);
+
+  // Soft auto-reconnect after a manual disconnect if the last session used injected.
+  useEffect(() => {
+    if (accountStatus !== "disconnected") {
+      // Reset guard whenever we’re not in a disconnected state
+      triedAutoReconnectRef.current = false;
+      return;
+    }
+
+    // Only try once per disconnection
+    if (triedAutoReconnectRef.current) return;
+
+    const last = (typeof window !== "undefined"
+      ? localStorage.getItem(LAST_CONNECTOR_KEY)
+      : null) as string | null;
+
+    if (last === "injected" && injected && (injected as any).ready !== false) {
+      triedAutoReconnectRef.current = true;
+      // Small delay so the UI settles after the disconnect modal closes
+      const t = setTimeout(async () => {
+        try {
+          await connectAsync({ connector: injected });
+        } catch {
+          // no worries—user can click the button to open the modal
+        }
+      }, 250);
+      return () => clearTimeout(t);
+    }
+  }, [accountStatus, connectAsync, injected]);
 
   // ⟡ Brand button (forces same look connected/disconnected)
   const baseBtn =
@@ -70,13 +107,17 @@ export default function Nav() {
                   authenticationStatus === "authenticated");
 
               const handleClick = async () => {
-                // One-click connect for injected wallets
+                // Try injected first for one-click flows
                 if (!connected && canQuickConnect && injected) {
                   try {
-                    await connectAsync({ connector: injected });
-                    return;
+                    const res = await connectAsync({ connector: injected });
+                    // remember last connector if connect succeeded
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem(LAST_CONNECTOR_KEY, "injected");
+                    }
+                    return res;
                   } catch {
-                    // If quick connect fails, fall back to the modal
+                    // fall back to modal if quick connect fails
                   }
                 }
                 openConnectModal?.();
@@ -134,6 +175,8 @@ export default function Nav() {
                     type="button"
                     aria-label="Account"
                     title="Account"
+                    // When they disconnect from this modal, the useEffect above will
+                    // auto-attempt injected again if that was the last connector.
                   >
                     {account?.displayName ||
                       (address ? short(address) : "Account")}
