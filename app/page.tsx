@@ -10,25 +10,31 @@ export default function Home() {
           Claim your<span className="text-zinc-400"> time on chain.</span>
         </h1>
         <p className="mt-4 max-w-2xl text-zinc-400">
-          Proof of Time finds your longest-held tokens on Base and turns them into
-          <em className="not-italic"> relics</em>—proud badges of on-chain patience.
+          Proof of Time reveals your longest-held tokens on Base — turning
+          consistent holders into living records of patience, loyalty, and belief.
         </p>
-
-        <div className="mt-8">
-          {/* WalletConnect sits in the Nav. No extra form here. */}
-          <p className="text-sm text-zinc-400">
-            Farcaster-friendly: share cards & stats directly from your altar.
-            Neynar integration is built-in for easy casts.
-          </p>
-        </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-6 pb-24">
         <div className="grid gap-6 md:grid-cols-3">
-          <FeatureCard title="Discover Relics" text="We reconstruct holding streaks from on-chain transfers, then rank tokens by uninterrupted time held." />
-          <FeatureCard title="Zero Minting" text="Nothing to mint or stake here—just pure on-chain history, measured and displayed." />
-          <FeatureCard title="Share Anywhere" text="Post your altar to Farcaster or X with dynamic images and copy. Flex your hold streaks." />
+          <FeatureCard
+            title="Discover Relics"
+            text="Each relic represents a token you’ve held through time — measured block by block, proof that you stayed the course."
+          />
+          <FeatureCard
+            title="Track Your Journey"
+            text="View your altar to see how long your relics have endured and what streaks continue unbroken."
+          />
+          <FeatureCard
+            title="Celebrate Endurance"
+            text="Show off your will to hold on — not through hype or minting, but by proving your commitment directly from the chain."
+          />
         </div>
+
+        <p className="mt-12 text-sm text-zinc-500 max-w-3xl">
+          Note: Proof of Time currently evaluates ERC-20 holdings on Base. LP positions and
+          staked assets are not yet included in relic calculations.
+        </p>
       </section>
     </main>
   );
