@@ -12,29 +12,23 @@ function short(addr: string) {
 const LAST_CONNECTOR_KEY = "pot_last_connector"; // 'injected' | 'walletConnect' | 'coinbaseWallet' | etc.
 
 export default function Nav() {
-  // Persist the connector on every successful connect (works for modal or programmatic)
-  const { address, status: accountStatus, isConnecting, connector } = useAccount({
-    onConnect(data) {
-      try {
-        const id =
-          (data.connector as any)?.type ||
-          (data.connector as any)?.id ||
-          "unknown";
-        localStorage.setItem(LAST_CONNECTOR_KEY, String(id));
-      } catch {}
-    },
-    onDisconnect() {
-      // keep LAST_CONNECTOR_KEY so we know what to auto-reconnect with
-    },
-  });
-
+  const { address, status: accountStatus, isConnecting, connector } = useAccount();
   const { connectAsync, status: connectStatus } = useConnect();
   const connectors = useConnectors();
+
+  // Persist the connector whenever we are connected (covers modal & programmatic connects)
+  useEffect(() => {
+    if (!address || !connector) return;
+    try {
+      const id = (connector as any).type || (connector as any).id || "unknown";
+      localStorage.setItem(LAST_CONNECTOR_KEY, String(id));
+    } catch {}
+  }, [address, connector]);
 
   // Prefer injected for one-click (Farcaster in-app, Base/Coinbase browsers, MetaMask)
   const injected = connectors.find((c) => c.type === "injected");
 
-  // if we’re not connected and there’s *any* window.ethereum, allow quick attempt even if ready flag lies
+  // Loosen readiness check: if window.ethereum exists, allow quick attempt
   const hasWindowEth =
     typeof window !== "undefined" &&
     !!(window as any).ethereum &&
@@ -54,10 +48,9 @@ export default function Nav() {
     }
     if (triedAutoReconnectRef.current) return;
 
-    const last =
-      (typeof window !== "undefined"
-        ? localStorage.getItem(LAST_CONNECTOR_KEY)
-        : null) || "";
+    const last = (typeof window !== "undefined"
+      ? localStorage.getItem(LAST_CONNECTOR_KEY)
+      : null) || "";
 
     if (last.toLowerCase() === "injected" && injected) {
       triedAutoReconnectRef.current = true;
@@ -72,7 +65,7 @@ export default function Nav() {
     }
   }, [accountStatus, connectAsync, injected]);
 
-  // ⟡ Brand button (same look for both states)
+  // Brand button (same look connected & disconnected)
   const baseBtn =
     "inline-flex items-center gap-2 rounded-xl " +
     "bg-[#BBA46A] hover:bg-[#d6c289] " +
@@ -93,7 +86,7 @@ export default function Nav() {
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
-        {/* Right-side controls */}
+        {/* Right controls */}
         <div className="ml-auto flex items-center gap-3">
           {address && (
             <Link
@@ -127,7 +120,6 @@ export default function Nav() {
                 if (!connected && canQuickConnect && injected) {
                   try {
                     await connectAsync({ connector: injected });
-                    // record it for future auto-reconnects
                     localStorage.setItem(LAST_CONNECTOR_KEY, "injected");
                     return;
                   } catch {
@@ -190,8 +182,7 @@ export default function Nav() {
                     aria-label="Account"
                     title="Account"
                   >
-                    {account?.displayName ||
-                      (address ? short(address) : "Account")}
+                    {account?.displayName || (address ? short(address) : "Account")}
                   </button>
                 </div>
               );
