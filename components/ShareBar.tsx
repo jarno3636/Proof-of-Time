@@ -33,10 +33,10 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // Altar-wide OG card (unchanged)
+  // Altar-wide OG card
   const altarCardUrl = `${site}/api/card/${address}`;
 
-  // Single-relic OG card (your new endpoint)
+  // Single-relic OG card
   const relicCardUrl = (t: Token) => {
     const params = new URLSearchParams({
       symbol: t.symbol,
@@ -47,34 +47,50 @@ export default function ShareBar({
     return `${site}/api/relic-card?${params.toString()}`;
   };
 
-  const makeText = (list: Token[]) => {
-    const parts = list.map(
-      (t) =>
-        `$${t.symbol} ${t.days}d${
-          t.never_sold ? " (never sold)" : ` (no-sell ${t.no_sell_streak_days}d)`
-        }`
-    );
-    return `Proof of Time: ${parts.join(" • ")}\nTime > hype. #ProofOfTime ⏳`;
-  };
+  /* ---------- Nicer cast/tweet text ---------- */
+  function titleLine(list: Token[]) {
+    if (list.length === 1) return "⟡ Relic Revealed";
+    if (list.length <= 3) return "⟡ Relics Revealed";
+    return "⟡ Proof of Time — Altar";
+  }
 
-  // -------- Farcaster helpers ----------
+  function lineFor(t: Token) {
+    const sym = `$${t.symbol}`;
+    const d = `${t.days}d`;
+    const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
+    return `• ${sym} — ${d} (${badge})`;
+  }
+
+  function closingLine() {
+    return "Time > hype. #ProofOfTime ⏳";
+  }
+
+  function buildText(list: Token[]) {
+    const lines = [titleLine(list), ...list.map(lineFor), closingLine()];
+    return lines.join("\n");
+  }
+
+  /* ---------- Farcaster ---------- */
   const shareFC = (text: string, embedUrl: string) => {
-    const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
+    // Include the URL in the text for better previews across clients.
+    const textWithUrl = `${text}\n${embedUrl}`;
+    const url = buildFarcasterComposeUrl({ text: textWithUrl, embeds: [embedUrl] });
     composeCast(url);
   };
 
   const shareAllFC = useCallback(() => {
-    shareFC(makeText(tokens), altarCardUrl);
+    const text = buildText(tokens);
+    shareFC(text, altarCardUrl);
   }, [tokens, altarCardUrl]);
 
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
-    const text = makeText(selected);
+    const text = buildText(selected);
     const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
     shareFC(text, embed);
   }, [selected, altarCardUrl]);
 
-  // -------- X helpers ----------
+  /* ---------- X (Twitter) ---------- */
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
@@ -83,12 +99,12 @@ export default function ShareBar({
   }
 
   const shareAllX = useCallback(() => {
-    openXShare(makeText(tokens), altarCardUrl);
+    openXShare(buildText(tokens), altarCardUrl);
   }, [tokens, altarCardUrl]);
 
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    const text = makeText(selected);
+    const text = buildText(selected);
     const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
     openXShare(text, embed);
   }, [selected, altarCardUrl]);
