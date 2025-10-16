@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjExMjExOTMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHhmNTYwMzNDMTkxYjY2NTA0QWQ0Q0Y4NzMyM0E3NzNGRDg2RGM1MGFkIn0",
+    "payload": "eyJkb21haW4iOiJwcm9vZm9mdGltZS52ZXJjZWwuYXBwIn0",
+    "signature": "pX0TS6aPygLZUzhGeWrWYHC5lnC0y8lMFBgCn41J/eJnBYyustX/cXbgCB/QzIHxTaR91f0p4AlbUKHClOWIchw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "Proof of Time",
+    "iconUrl": "https://proofoftime.vercel.app/icon.png",
+    "homeUrl": "https://proofoftime.vercel.app",
+    "imageUrl": "https://proofoftime.vercel.app/og.png",
+    "buttonTitle": "Enter Your Altar",
+    "splashImageUrl": "https://proofoftime.vercel.app/splash.png",
+    "splashBackgroundColor": "#0b0e14",
+    "webhookUrl": "https://proofoftime.vercel.app/api/webhook"
+  }
+}
