@@ -6,7 +6,7 @@ import RelicAltar from "@/components/RelicAltar";
 import ShareBar from "@/components/ShareBar";
 
 type ApiToken = {
-  token_address: string;
+  token_address: `0x${string}`;
   symbol: string;
   days: number;
   no_sell_streak_days: number;
@@ -29,7 +29,7 @@ export default function Page({ params }: { params: { address: string } }) {
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]); // symbols selected
+  const [selected, setSelected] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,7 +37,6 @@ export default function Page({ params }: { params: { address: string } }) {
     try {
       const j = await getRelics(targetAddr);
       setTokens(j.tokens || []);
-      // keep selection valid
       setSelected((prev) =>
         prev.filter((sym) => (j.tokens || []).some((t) => t.symbol === sym))
       );
@@ -56,15 +55,13 @@ export default function Page({ params }: { params: { address: string } }) {
     setComputing(true);
     setError(null);
     try {
-      const body = { address: targetAddr };
       const r = await fetch("/api/compute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ address: targetAddr }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || "Compute failed");
-      // refresh list afterwards
       await load();
     } catch (e: any) {
       setError(e?.message || "Compute error");
@@ -85,10 +82,12 @@ export default function Page({ params }: { params: { address: string } }) {
     connected.toLowerCase() === targetAddr.toLowerCase();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
+    <main className="mx-auto max-w-6xl px-4 py-10 text-[#EDEEF2]">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Your Relic Altar</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
+            <span className="text-[#BBA46A]">⟡</span> Your Relic Altar
+          </h1>
           <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -125,7 +124,7 @@ export default function Page({ params }: { params: { address: string } }) {
         </div>
       )}
 
-      {/* Empty / loading states */}
+      {/* Altar / states */}
       {loading ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <SkeletonCard />
@@ -135,8 +134,7 @@ export default function Page({ params }: { params: { address: string } }) {
       ) : tokens.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
           <p className="opacity-80">
-            No relics yet. Click <span className="font-semibold">“Verify your will to hold on”</span>{" "}
-            to compute, then refresh.
+            No relics yet. Click <span className="font-semibold">“Verify your will to hold”</span> to compute, then refresh.
           </p>
           <p className="opacity-60 text-sm mt-2">
             Note: LP positions and some programmatic movements can complicate “time held”.
@@ -147,6 +145,7 @@ export default function Page({ params }: { params: { address: string } }) {
           <div className="mt-6">
             <RelicAltar
               items={tokens.map((t) => ({
+                token_address: t.token_address,
                 symbol: t.symbol,
                 days: t.days,
                 no_sell_streak_days: t.no_sell_streak_days,
