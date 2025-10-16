@@ -33,89 +33,65 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  const altarCardUrl = `${site}/api/card/${address}`;
-
-  const relicCardUrl = (t: Token) => {
-    const params = new URLSearchParams({
+  // Share PAGES (HTML with OG) -> more reliable embeds
+  const altarSharePage = `${site}/card/${address}`;
+  const relicSharePage = (t: Token) => {
+    const q = new URLSearchParams({
       symbol: t.symbol,
       days: String(t.days ?? 0),
       tier: t.tier || "Bronze",
       token: t.token_address,
     });
-    return `${site}/api/relic-card?${params.toString()}`;
+    return `${site}/relic-card?${q.toString()}`;
   };
 
-  /* ---------- Text formatting ---------- */
-  function titleLine(list: Token[]) {
-    if (list.length === 1) return "⟡ Relic Revealed";
-    if (list.length <= 3) return "⟡ Relics Revealed";
-    return "⟡ Proof of Time — Altar";
-  }
+  /* ---------- Nice copy ---------- */
+  const title = (list: Token[]) =>
+    list.length === 1 ? "⟡ Relic Revealed" : list.length <= 3 ? "⟡ Relics Revealed" : "⟡ Proof of Time — Altar";
 
-  function lineFor(t: Token) {
-    const sym = `$${t.symbol}`;
-    const d = `${t.days}d`;
-    const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-    return `• ${sym} — ${d} (${badge})`;
-  }
+  const lineFor = (t: Token) =>
+    `• $${t.symbol} — ${t.days}d (${t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`})`;
 
-  function closingLine() {
-    return "Time > hype. #ProofOfTime ⏳";
-  }
+  const diamond = "Time to let those diamond hands shine 💎✊";
+  const closing = "Time > hype. #ProofOfTime ⏳";
 
-  function diamondLine() {
-    return "Time to let those diamond hands shine 💎✊";
-  }
+  const buildText = (list: Token[]) =>
+    [title(list), ...list.map(lineFor), diamond, closing].join("\n");
 
-  function buildText(list: Token[]) {
-    const lines = [
-      titleLine(list),
-      ...list.map(lineFor),
-      diamondLine(),
-      closingLine(),
-    ];
-    return lines.join("\n");
-  }
-
-  /* ---------- Farcaster ---------- */
+  /* ---------- Farcaster (no link in body) ---------- */
   const shareFC = (text: string, embedUrl: string) => {
-    // No link in Farcaster post text — only the embedded image
     const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
     composeCast(url);
   };
 
   const shareAllFC = useCallback(() => {
-    const text = buildText(tokens);
-    shareFC(text, altarCardUrl);
-  }, [tokens, altarCardUrl]);
+    shareFC(buildText(tokens), altarSharePage);
+  }, [tokens, altarSharePage]);
 
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
-    const text = buildText(selected);
-    const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
-    shareFC(text, embed);
-  }, [selected, altarCardUrl]);
+    const embed = selected.length === 1 ? relicSharePage(selected[0]) : altarSharePage;
+    shareFC(buildText(selected), embed);
+  }, [selected, altarSharePage]);
 
-  /* ---------- X (Twitter) ---------- */
-  function openXShare(text: string, url?: string) {
+  /* ---------- X (keep link for card preview) ---------- */
+  function openX(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
-    const params = new URLSearchParams({ text });
-    if (url) params.set("url", url); // keep link for X embeds
-    window.open(`${base}?${params.toString()}`, "_blank", "noopener,noreferrer");
+    const qs = new URLSearchParams({ text });
+    if (url) qs.set("url", url);
+    window.open(`${base}?${qs.toString()}`, "_blank", "noopener,noreferrer");
   }
 
   const shareAllX = useCallback(() => {
-    openXShare(buildText(tokens), altarCardUrl);
-  }, [tokens, altarCardUrl]);
+    openX(buildText(tokens), altarSharePage);
+  }, [tokens, altarSharePage]);
 
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    const text = buildText(selected);
-    const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
-    openXShare(text, embed);
-  }, [selected, altarCardUrl]);
+    const link = selected.length === 1 ? relicSharePage(selected[0]) : altarSharePage;
+    openX(buildText(selected), link);
+  }, [selected, altarSharePage]);
 
-  /* ---------- UI ---------- */
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
