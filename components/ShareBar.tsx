@@ -22,77 +22,95 @@ export default function ShareBar({
 }) {
   const selected = useMemo(
     () =>
-      (selectedSymbols.length
+      selectedSymbols.length
         ? tokens.filter((t) => selectedSymbols.includes(t.symbol))
-        : []),
+        : [],
     [tokens, selectedSymbols]
   );
 
   const makeText = (list: Token[]) => {
-    const parts = list.map((t) =>
-      `$${t.symbol} ${t.days}d${
-        t.never_sold ? " (never sold)" : ` (no-sell ${t.no_sell_streak_days}d)`
-      }`
+    const parts = list.map(
+      (t) =>
+        `$${t.symbol} ${t.days}d${
+          t.never_sold ? " (never sold)" : ` (no-sell ${t.no_sell_streak_days}d)`
+        }`
     );
-    // short, punchy message
     return `Proof of Time: ${parts.join(" • ")}\nTime > hype. #ProofOfTime ⏳`;
   };
 
-  const cardUrlAll = `${process.env.NEXT_PUBLIC_SITE_URL || ""}/api/card/${address}`;
-  const shareAll = useCallback(() => {
+  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+  const cardUrlAll = `${site}/api/card/${address}`;
+
+  // ---------- Farcaster (altar / selected) ----------
+  const shareAllFC = useCallback(() => {
     const text = makeText(tokens);
     const url = buildFarcasterComposeUrl({ text, embeds: [cardUrlAll] });
     composeCast(url);
   }, [tokens, cardUrlAll]);
 
-  const shareSelected = useCallback(() => {
+  const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     const text = makeText(selected);
     const url = buildFarcasterComposeUrl({ text, embeds: [cardUrlAll] });
     composeCast(url);
   }, [selected, cardUrlAll]);
 
-  const shareOne = useCallback(
-    (t: Token) => {
-      const text = makeText([t]);
-      const url = buildFarcasterComposeUrl({ text, embeds: [cardUrlAll] });
-      composeCast(url);
-    },
-    [cardUrlAll]
-  );
+  // ---------- X / Twitter (altar / selected) ----------
+  function openXShare(text: string, url?: string) {
+    const base = "https://twitter.com/intent/tweet";
+    const params = new URLSearchParams({
+      text,
+      ...(url ? { url } : {}),
+    });
+    const shareUrl = `${base}?${params.toString()}`;
+    window.open(shareUrl, "_blank", "noopener,noreferrer");
+  }
+
+  const shareAllX = useCallback(() => {
+    openXShare(makeText(tokens), cardUrlAll);
+  }, [tokens, cardUrlAll]);
+
+  const shareSelectedX = useCallback(() => {
+    if (!selected.length) return;
+    openXShare(makeText(selected), cardUrlAll);
+  }, [selected, cardUrlAll]);
 
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
+        {/* Farcaster */}
         <button
-          onClick={shareAll}
+          onClick={shareAllFC}
           className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
-          title="Share all relics"
+          title="Share all relics on Farcaster"
         >
-          Share Altar
+          Share Altar (Farcaster)
         </button>
         <button
-          onClick={shareSelected}
+          onClick={shareSelectedFC}
           disabled={!selected.length}
           className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
-          title="Share selected relics"
+          title="Share selected relics on Farcaster"
         >
-          Share Selected
+          Share Selected (Farcaster)
         </button>
-      </div>
 
-      {/* Per-relic quick shares */}
-      <div className="flex flex-wrap gap-2 text-xs opacity-80">
-        {tokens.map((t) => (
-          <button
-            key={t.symbol}
-            onClick={() => shareOne(t)}
-            className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 transition"
-            title={`Share $${t.symbol}`}
-          >
-            Share ${t.symbol}
-          </button>
-        ))}
+        {/* X / Twitter */}
+        <button
+          onClick={shareAllX}
+          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
+          title="Share all relics on X"
+        >
+          Share Altar (X)
+        </button>
+        <button
+          onClick={shareSelectedX}
+          disabled={!selected.length}
+          className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
+          title="Share selected relics on X"
+        >
+          Share Selected (X)
+        </button>
       </div>
     </div>
   );
