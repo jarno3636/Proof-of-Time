@@ -9,7 +9,7 @@ type Token = {
   days: number;
   no_sell_streak_days: number;
   never_sold: boolean;
-  tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian"; // optional for safety
+  tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
 export default function ShareBar({
@@ -33,9 +33,10 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
+  // Altar-wide OG card (unchanged)
   const altarCardUrl = `${site}/api/card/${address}`;
 
-  // Build a single-relic OG card URL
+  // Single-relic OG card (your new endpoint)
   const relicCardUrl = (t: Token) => {
     const params = new URLSearchParams({
       symbol: t.symbol,
@@ -69,12 +70,11 @@ export default function ShareBar({
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     const text = makeText(selected);
-    const embed =
-      selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
+    const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
     shareFC(text, embed);
   }, [selected, altarCardUrl]);
 
-  // -------- X (Twitter) helpers ----------
+  // -------- X helpers ----------
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
@@ -89,8 +89,7 @@ export default function ShareBar({
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     const text = makeText(selected);
-    const embed =
-      selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
+    const embed = selected.length === 1 ? relicCardUrl(selected[0]) : altarCardUrl;
     openXShare(text, embed);
   }, [selected, altarCardUrl]);
 
