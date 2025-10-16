@@ -1,11 +1,15 @@
+import Nav from "@/components/Nav";
+import Explainer from "@/components/Explainer";
+import ComputeForm from "@/components/ComputeForm"; // from earlier “loading overlay” reply
+
 export default function Home() {
   return (
-    <main className="p-8">
-      <h1 className="text-3xl font-bold">Proof of Time</h1>
-      <p className="opacity-70">Connect wallet in your app UI. API endpoints are under /api/*.</p>
-      <div className="mt-4">
-        <a href="/test" className="underline">Run a test compute →</a>
-      </div>
+    <main>
+      <Nav />
+      <header className="mx-auto max-w-6xl px-4 pt-10">
+        <ComputeForm />
+      </header>
+      <Explainer />
     </main>
   );
 }
