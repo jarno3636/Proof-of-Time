@@ -9,6 +9,7 @@ import {
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { base } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import {
   injectedWallet,
@@ -20,6 +21,7 @@ import {
 } from "@rainbow-me/rainbowkit/wallets";
 
 import { MiniKitContextProvider } from "@/providers/MiniKitProvider";
+import { signalMiniAppReady } from "@/lib/miniapp"; // ← tells Warpcast MiniApp we're ready (no-op elsewhere)
 
 const INFURA_KEY =
   process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
@@ -64,6 +66,11 @@ const config = createConfig({
 const qc = new QueryClient();
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    // If running inside Warpcast MiniApp, signal readiness (safe no-op in normal browsers)
+    signalMiniAppReady();
+  }, []);
+
   return (
     <MiniKitContextProvider>
       <WagmiProvider config={config} reconnectOnMount>
