@@ -1,29 +1,31 @@
+// components/FarcasterReady.tsx
 "use client";
-
 import { useEffect } from "react";
 
-/**
- * Notifies Warpcast mini-app shell that the UI is ready.
- * Safe no-op outside Farcaster.
- */
 export default function FarcasterReady() {
   useEffect(() => {
-    // Native global (Warpcast) – preferred
-    const fc = (globalThis as any).farcaster;
-    if (fc?.actions?.ready) {
-      fc.actions.ready();
-      return;
-    }
+    let done = false;
+    const tryReady = () => {
+      try {
+        (window as any)?.farcaster?.actions?.ready?.();
+        done = !!(window as any)?.farcaster?.actions;
+      } catch {}
+    };
 
-    // Optional SDK fallback if you later install @farcaster/miniapp-sdk
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const miniapp = require("@farcaster/miniapp-sdk")?.default ??
-                      require("@farcaster/miniapp-sdk");
-      miniapp?.actions?.ready?.();
-    } catch {
-      /* noop */
-    }
+    // First shot, then poll for a few seconds in case the bridge injects late
+    tryReady();
+    const iv = setInterval(() => {
+      if (done) return clearInterval(iv);
+      tryReady();
+    }, 200);
+
+    // Stop after ~8s
+    const timeout = setTimeout(() => clearInterval(iv), 8000);
+
+    return () => {
+      clearInterval(iv);
+      clearTimeout(timeout);
+    };
   }, []);
 
   return null;
