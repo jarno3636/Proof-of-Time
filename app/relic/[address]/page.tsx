@@ -105,10 +105,18 @@ export default function Page({ params }: { params: { address: string } }) {
             disabled={computing}
             title={isOwnerView ? "Recalculate from chain & DB" : "Recalculate (anyone can trigger)"}
           >
-            {computing ? "Unveiling…" : "Unveil your Proof of Time"}
+            {computing ? "Verifying…" : "Verify your will to hold"}
           </button>
         </div>
       </header>
+
+      {/* Computing banner */}
+      {computing && (
+        <div className="mt-4 rounded-xl border border-[#BBA46A]/30 bg-[#BBA46A]/10 px-4 py-3 text-sm text-[#EDEEF2] flex items-center gap-2">
+          <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A] animate-pulse" />
+          Verifying your will to hold on…
+        </div>
+      )}
 
       {/* Error banner */}
       {error && (
@@ -127,7 +135,7 @@ export default function Page({ params }: { params: { address: string } }) {
       ) : tokens.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
           <p className="opacity-80">
-            No relics yet. Click <span className="font-semibold">“Unveil your Proof of Time”</span>{" "}
+            No relics yet. Click <span className="font-semibold">“Verify your will to hold on”</span>{" "}
             to compute, then refresh.
           </p>
           <p className="opacity-60 text-sm mt-2">
