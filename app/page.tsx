@@ -26,7 +26,7 @@ export default function Home() {
             text="View your altar to see how long your relics have endured and what streaks continue unbroken."
           />
           <FeatureCard
-            title="Celebrate Endurance"
+            title="Celebrate Patience"
             text="Show off your will to hold on — not through hype or minting, but by proving your commitment directly from the chain."
           />
         </div>
