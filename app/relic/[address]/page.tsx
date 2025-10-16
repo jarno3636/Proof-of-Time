@@ -29,7 +29,7 @@ export default function Page({ params }: { params: { address: string } }) {
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]); // symbols selected
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,12 +82,10 @@ export default function Page({ params }: { params: { address: string } }) {
     connected.toLowerCase() === targetAddr.toLowerCase();
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 text-[#EDEEF2]">
+    <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-            <span className="text-[#BBA46A]">⟡</span> Your Relic Altar
-          </h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">Your Relic Altar</h1>
           <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -109,7 +107,6 @@ export default function Page({ params }: { params: { address: string } }) {
         </div>
       </header>
 
-      {/* Computing banner */}
       {computing && (
         <div className="mt-4 rounded-xl border border-[#BBA46A]/30 bg-[#BBA46A]/10 px-4 py-3 text-sm text-[#EDEEF2] flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A] animate-pulse" />
@@ -117,14 +114,12 @@ export default function Page({ params }: { params: { address: string } }) {
         </div>
       )}
 
-      {/* Error banner */}
       {error && (
         <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
         </div>
       )}
 
-      {/* Altar / states */}
       {loading ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <SkeletonCard />
@@ -134,7 +129,8 @@ export default function Page({ params }: { params: { address: string } }) {
       ) : tokens.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
           <p className="opacity-80">
-            No relics yet. Click <span className="font-semibold">“Verify your will to hold”</span> to compute, then refresh.
+            No relics yet. Click <span className="font-semibold">“Verify your will to hold on”</span>{" "}
+            to compute, then refresh.
           </p>
           <p className="opacity-60 text-sm mt-2">
             Note: LP positions and some programmatic movements can complicate “time held”.
@@ -158,11 +154,8 @@ export default function Page({ params }: { params: { address: string } }) {
             />
           </div>
 
-          <ShareBar
-            address={targetAddr}
-            tokens={tokens}
-            selectedSymbols={selected}
-          />
+          {/* ShareBar now autoselects the correct OG card: altar vs single-relic */}
+          <ShareBar address={targetAddr} tokens={tokens} selectedSymbols={selected} />
 
           <p className="opacity-60 text-xs mt-6">
             Heads up: LP activity and wrapping/unwrapping patterns may affect continuous hold time.
