@@ -1,29 +1,42 @@
 // providers/MiniKitProvider.tsx
 "use client";
 
-import { MiniKitProvider } from "@coinbase/onchainkit/minikit";
-import { ReactNode, useMemo } from "react";
+import { ReactNode } from "react";
 import { base } from "wagmi/chains";
 
 /**
- * Wrap your app with this to enable Coinbase Mini App features when opened
- * inside the Coinbase app. It is a harmless no-op on regular web.
+ * Tries to dynamically import Coinbase MiniKit only if installed.
+ * Falls back to a no-op provider otherwise.
  */
 export function MiniKitContextProvider({ children }: { children: ReactNode }) {
-  const apiKey = process.env.NEXT_PUBLIC_CDP_CLIENT_API_KEY;
+  // In normal browsers or when MiniKit isn't installed, we just render children.
+  if (typeof window === "undefined") return <>{children}</>;
 
-  // In local/dev without a key, we still render children; MiniKitProvider requires a string.
-  const safeKey = useMemo(() => apiKey || "dev-placeholder-key", [apiKey]);
+  // Dynamically import MiniKitProvider if available (no compile-time import)
+  const LazyMiniKit = dynamicMiniKit();
+  if (!LazyMiniKit) return <>{children}</>;
 
-  return (
-    <MiniKitProvider
-      apiKey={safeKey}
-      chain={base}
-      // Optional but useful:
-      appName="Proof of Time"
-      debug={false}
-    >
-      {children}
-    </MiniKitProvider>
-  );
+  const { MiniKitProvider } = LazyMiniKit;
+  const apiKey =
+    process.env.NEXT_PUBLIC_CDP_CLIENT_API_KEY || "dev-placeholder-key";
+
+  try {
+    return (
+      <MiniKitProvider apiKey={apiKey} chain={base}>
+        {children}
+      </MiniKitProvider>
+    );
+  } catch {
+    return <>{children}</>;
+  }
+}
+
+/** Dynamic import shim — returns null if module not found */
+function dynamicMiniKit() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require("@coinbase/onchainkit/minikit");
+  } catch {
+    return null;
+  }
 }
