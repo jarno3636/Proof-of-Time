@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { buildFarcasterComposeUrl, composeCast } from "@/lib/miniapp";
+import { composeCast } from "@/lib/miniapp"; // ← now passes opts, uses native MiniApp composer if present
 
 type Token = {
   token_address: `0x${string}`;
@@ -33,17 +33,17 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // 👇 Warpcast embed (Frame HTML) — keeps users inside Farcaster
+  // Frame HTML to keep users inside Warpcast
   const FC_EMBED = `${site}/frames`;
 
-  // 👇 CTA for X (Twitter) — normal link preview
+  // CTA for X (Twitter) — regular link preview
   const CTA_URL = `${site}/`;
 
   function titleLine(list: Token[]) {
     if (list.length === 1) return "⟡ Relic Revealed";
     if (list.length <= 3) return "⟡ Relics Revealed";
     return "⟡ Proof of Time — Altar";
-    }
+  }
 
   function lineFor(t: Token) {
     const sym = `$${t.symbol}`;
@@ -63,10 +63,9 @@ export default function ShareBar({
   }
 
   /* ---------- Farcaster (Warpcast) ---------- */
-  // No raw URL in the text — rely on the frame embed to keep it in-app.
+  // Clean text (no raw URL) + embed the /frames route
   const shareFC = (text: string) => {
-    const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
-    composeCast(url);
+    composeCast({ text, embeds: [FC_EMBED] });
   };
 
   const shareAllFC = useCallback(() => {
@@ -79,7 +78,6 @@ export default function ShareBar({
   }, [selected]);
 
   /* ---------- X (Twitter) ---------- */
-  // X needs a URL param for the card; we point to the home CTA.
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
