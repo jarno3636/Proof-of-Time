@@ -1,38 +1,33 @@
-// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 
-// ---- Resolve a stable absolute site URL on the server (no `window`) ----
+/* ---------- Resolve a stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (env) return env; // e.g. https://proof-of-time.xyz
-
-  // Vercel fallback (preview/prod)
   const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel}`;
-
-  // Local dev
-  return "http://localhost:3000";
+  if (vercel) return `https://${vercel}`; // preview/prod
+  return "http://localhost:3000"; // dev
 }
 const site = getSiteUrl();
 
-// ---- Font ----
+/* ---------- Fonts ---------- */
 const cinzel = Cinzel({
   subsets: ["latin"],
   weight: ["400", "600", "700"],
   display: "swap",
 });
 
-// ---- Viewport (good for mobile meta) ----
+/* ---------- Viewport (mobile meta) ---------- */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#0b0e14",
 };
 
-// ---- Metadata (evaluated server-side; safe to use `site`) ----
+/* ---------- Metadata ---------- */
 export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: {
@@ -49,17 +44,13 @@ export const metadata: Metadata = {
     description: "Your longest-held tokens on Base. Time > hype.",
     url: site,
     siteName: "Proof of Time",
-    images: [
-      // Global fallback — your per-user/per-relic images come from /api/card/[address] & /api/relic-card
-      { url: "/og.png", width: 1200, height: 630, alt: "Proof of Time" },
-    ],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Proof of Time" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Proof of Time",
     description: "Your longest-held tokens on Base. Time > hype.",
     images: ["/og.png"],
-    // Set your handle if you want attribution on shares:
     // creator: "@your_handle",
   },
   icons: {
@@ -72,11 +63,6 @@ export const metadata: Metadata = {
   themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
   robots: { index: true, follow: true },
   alternates: { canonical: site },
-  // You can add frame defaults here if you really want global tags,
-  // but it's better to emit frame meta per-frame route HTML response.
-  other: {
-    // Example (commented): "fc:frame": "vNext",
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
