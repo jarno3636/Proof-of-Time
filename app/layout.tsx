@@ -3,15 +3,15 @@ import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
-import FarcasterReady from "@/components/FarcasterReady"; // 👈 add this
+import FarcasterReady from "@/components/FarcasterReady";
 
 /* ---------- Resolve a stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env; // e.g. https://proof-of-time.xyz
+  if (env) return env;                      // e.g. https://proof-of-time.xyz
   const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel}`; // preview/prod
-  return "http://localhost:3000"; // dev
+  if (vercel) return `https://${vercel}`;   // preview/prod
+  return "http://localhost:3000";           // dev
 }
 const site = getSiteUrl();
 
@@ -22,7 +22,7 @@ const cinzel = Cinzel({
   display: "swap",
 });
 
-/* ---------- Viewport (mobile meta) ---------- */
+/* ---------- Viewport ---------- */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -32,10 +32,7 @@ export const viewport: Viewport = {
 /* ---------- Metadata ---------- */
 export const metadata: Metadata = {
   metadataBase: new URL(site),
-  title: {
-    default: "Proof of Time",
-    template: "%s · Proof of Time",
-  },
+  title: { default: "Proof of Time", template: "%s · Proof of Time" },
   description: "Your longest-held tokens on Base. Time > hype.",
   applicationName: "Proof of Time",
   keywords: ["Base", "crypto", "onchain", "holder", "relics", "OG image"],
@@ -53,13 +50,9 @@ export const metadata: Metadata = {
     title: "Proof of Time",
     description: "Your longest-held tokens on Base. Time > hype.",
     images: ["/og.png"],
-    // creator: "@your_handle",
   },
   icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/icon.png", type: "image/png", sizes: "32x32" },
-    ],
+    icon: [{ url: "/favicon.ico" }, { url: "/icon.png", type: "image/png", sizes: "32x32" }],
     apple: [{ url: "/apple-touch-icon.png" }],
   },
   themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
@@ -73,12 +66,35 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+
+        {/* 🟣 Mini-app: tell Warpcast we're ready ASAP (before React mounts) */}
+        <script
+          id="fc-miniapp-ready"
+          dangerouslySetInnerHTML={{
+            __html: `
+(function(){
+  function signalReady() {
+    try { window.farcaster && window.farcaster.actions && window.farcaster.actions.ready && window.farcaster.actions.ready(); } catch (e) {}
+  }
+  // Try immediately, then on DOM ready, then poll briefly.
+  signalReady();
+  document.addEventListener('DOMContentLoaded', signalReady);
+  var tries = 0, max = 50;
+  var iv = setInterval(function(){
+    tries++;
+    signalReady();
+    if (tries >= max || (window.farcaster && window.farcaster.actions)) clearInterval(iv);
+  }, 120);
+})();
+          `,
+          }}
+        />
       </head>
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
         {/* Subtle “temple” backdrop */}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
 
-        {/* 👇 Tells Warpcast mini app shell that your UI is ready */}
+        {/* React-side safety net (keeps trying after hydration) */}
         <FarcasterReady />
 
         <Providers>{children}</Providers>
