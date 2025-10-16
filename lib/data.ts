@@ -96,6 +96,65 @@ async function safeRead<T>(p: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+// ───────────── FAST: Transfers via Etherscan v2 (no RPC) ──────────────
+
+export async function fetchTransfersViaEtherscan(
+  address: HexAddr,
+  maxPages = 10
+): Promise<Transfer[]> {
+  if (!ETHERSCAN_KEY) return [];
+  const out: Transfer[] = [];
+  let page = 1;
+
+  while (page <= maxPages) {
+    const url = new URL("https://api.etherscan.io/v2/api");
+    url.searchParams.set("chainid", "8453"); // Base mainnet
+    url.searchParams.set("module", "account");
+    url.searchParams.set("action", "tokentx");
+    url.searchParams.set("address", address);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("offset", "1000");
+    url.searchParams.set("sort", "asc");
+    url.searchParams.set("apikey", ETHERSCAN_KEY);
+
+    const res = await fetch(url.toString(), { cache: "no-store" }).catch(
+      () => null
+    );
+    if (!res || !res.ok) break;
+    const json: any = await res.json().catch(() => ({}));
+    const list: any[] = Array.isArray(json?.result) ? json.result : [];
+    if (!list.length) break;
+
+    for (const r of list) {
+      const tokenAddr = toLower(r?.contractAddress);
+      if (!/^0x[0-9a-f]{40}$/.test(tokenAddr)) continue;
+
+      let value = 0n;
+      try {
+        value = BigInt(r?.value ?? "0");
+      } catch {}
+
+      out.push({
+        token: tokenAddr as HexAddr,
+        from: toLower(r?.from) as HexAddr,
+        to: toLower(r?.to) as HexAddr,
+        value,
+        block: Number(r?.blockNumber ?? 0),
+        ts: Number(r?.timeStamp ?? 0),
+        symbol: r?.tokenSymbol || "TKN",
+        decimals: Number(r?.tokenDecimal ?? 18),
+      });
+    }
+
+    if (list.length < 1000) break;
+    page++;
+    await sleep(80);
+  }
+
+  out.sort((a, b) => a.block - b.block || a.ts - b.ts);
+  return out;
+}
+
 // ───────────── Etherscan V2 token discovery (many pages) ───────────────
 
 async function discoverTokensViaEtherscanV2All(
@@ -264,36 +323,35 @@ export async function fetchTransfersBase(
   return transfers;
 }
 
-// ─────── Balances + metadata (Infura + GoldRush + Etherscan) ────────
+// ─────── Balances + metadata (GoldRush → Etherscan → seeds → RPC) ───────
 
 export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
-  // 1) From logs
-  const txs = await fetchTransfersBase(address);
-  const tokenSet = new Set<string>(txs.map((t) => t.token));
-
-  // 2) From Etherscan
-  const es = await discoverTokensViaEtherscanV2All(address);
-  for (const a of es) tokenSet.add(a.toLowerCase());
-
-  // 3) Seeds
-  for (const a of SEED_TOKENS) tokenSet.add(a);
-
-  // 4) GoldRush balances (fast path)
-  const gr = await discoverViaGoldRush(address);
-  for (const g of gr) tokenSet.add(g.token);
-
-  const candidates = [...tokenSet] as HexAddr[];
-  if (!candidates.length) return [];
-
   const out: Balance[] = [];
-  const grMap = new Map(gr.map((x) => [x.token, x]));
 
-  // use GoldRush values directly
+  // 1) GoldRush (usually complete & fast)
+  const gr = await discoverViaGoldRush(address);
+  const grMap = new Map(gr.map((x) => [x.token, x]));
   for (const x of gr) {
     out.push({ token: x.token, symbol: x.symbol, decimals: x.decimals, raw: x.raw });
   }
 
-  // fallback: on-chain reads via chunked multicalls (throttled)
+  // 2) Etherscan discovery (find tokens we touched)
+  const tokenSet = new Set<string>(gr.map((x) => x.token));
+  const es = await discoverTokensViaEtherscanV2All(address);
+  for (const a of es) tokenSet.add(a.toLowerCase());
+
+  // 3) Seeds (USDC/WETH etc.)
+  for (const a of SEED_TOKENS) tokenSet.add(a);
+
+  let candidates = [...tokenSet] as HexAddr[];
+
+  // If we still have *no* candidates, do an on-chain discovery pass as a last resort.
+  if (!candidates.length) {
+    const txs = await fetchTransfersBase(address);
+    candidates = [...new Set(txs.map((t) => t.token))] as HexAddr[];
+  }
+
+  // 4) On-chain reads for anything GoldRush didn’t cover (chunked + throttled)
   const toRead = candidates.filter((t) => !grMap.has(t));
   for (let i = 0; i < toRead.length; i += MULTICALL_CHUNK) {
     const chunk = toRead.slice(i, i + MULTICALL_CHUNK);
@@ -332,7 +390,7 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
       out.push({ token, symbol, decimals, raw });
     }
 
-    await sleep(MULTICALL_SLEEP_MS); // ── throttle between chunks
+    await sleep(MULTICALL_SLEEP_MS);
   }
 
   return out;
