@@ -2,21 +2,24 @@
 "use client";
 
 import * as React from "react";
-import { composeCastEverywhere } from "@/lib/miniapp";
+import { composeCast } from "@/lib/miniapp";
+import { buildWarpcastCompose, openShareWindow } from "@/lib/share";
 
 type Props = {
   text: string;
   embeds?: string[];
+  url?: string;               // optional: link to include after the text
   className?: string;
   disabled?: boolean;
   title?: string;
   children?: React.ReactNode;
-  onDone?: (via: "sdk" | "web") => void; // optional: know which path was used
+  onDone?: (via: "sdk" | "web") => void; // which path was used
 };
 
 export default function ShareToFarcasterButton({
   text,
   embeds = [],
+  url,
   className,
   disabled,
   title,
@@ -24,9 +27,18 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
-    const via = await composeCastEverywhere({ text, embeds });
-    onDone?.(via);
-  }, [text, embeds, onDone]);
+    // 1) Try composing in-app via SDKs (frame-sdk or miniapp-sdk)
+    const ok = await composeCast({ text: url && !text.includes(url) ? `${text}\n${url}` : text, embeds });
+    if (ok) {
+      onDone?.("sdk");
+      return;
+    }
+
+    // 2) Fallback to Warpcast web composer (works everywhere)
+    const href = buildWarpcastCompose({ text, url, embeds });
+    await openShareWindow(href);
+    onDone?.("web");
+  }, [text, url, embeds, onDone]);
 
   return (
     <button
