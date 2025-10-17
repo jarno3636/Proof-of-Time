@@ -14,6 +14,7 @@
     "@coinbase/onchainkit": "^0.13.1",
     "framer-motion": "^11.1.0",
     "lucide-react": "^0.453.0",
+    "@farcaster/miniapp-sdk": "latest",
     "next": "^14.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
