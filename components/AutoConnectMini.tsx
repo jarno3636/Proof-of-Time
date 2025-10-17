@@ -4,10 +4,7 @@ import { useEffect, useRef } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { isFarcasterUA } from "@/lib/miniapp";
 
-/**
- * Tries to auto-connect once when running inside Warpcast.
- * Order: Injected (if present) → Coinbase Wallet → first available.
- */
+/** One-shot auto-connect when running inside Warpcast */
 export default function AutoConnectMini() {
   const tried = useRef(false);
   const { isConnected } = useAccount();
@@ -15,45 +12,38 @@ export default function AutoConnectMini() {
 
   useEffect(() => {
     if (tried.current) return;
-    if (!isFarcasterUA()) return;               // only act in the mini app
-    if (isConnected) return;                     // nothing to do
+    if (!isFarcasterUA()) return;
+    if (isConnected) return;
     if (status === "pending" || status === "success") return;
 
     tried.current = true;
 
-    const doIt = async () => {
-      // tiny delay so the Farcaster SDK finishes ready()
-      await new Promise((r) => setTimeout(r, 400));
+    const run = async () => {
+      await new Promise((r) => setTimeout(r, 400)); // let SDK settle
 
-      // Prefer an injected provider if present
       const injected =
         connectors.find((c) => /injected/i.test(c.name)) ||
         connectors.find((c) => c.id === "injected");
 
-      // Otherwise prefer Coinbase Wallet if available
-      const cbw =
+      const coinbase =
         connectors.find((c) => /coinbase/i.test(c.name)) ||
         connectors.find((c) => c.id === "coinbaseWalletSDK");
 
-      // Fallback to first available
-      const fallback = connectors[0];
-
-      const pick = injected || cbw || fallback;
+      const pick = injected || coinbase || connectors[0];
       if (!pick) return;
 
       try {
         await connectAsync({ connector: pick });
       } catch {
-        // Silent: user can still click connect manually
+        /* ignore */
       }
     };
 
-    // Only once per session
     const key = "__pot_auto_connect_v1";
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, "1");
-
-    void doIt();
+    if (typeof window !== "undefined" && !sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, "1");
+      void run();
+    }
   }, [connectors, connectAsync, isConnected, status]);
 
   return null;
