@@ -59,46 +59,46 @@ export function buildFarcasterComposeUrl({
   return url.toString();
 }
 
-/* ---------------- Dynamic SDK loaders (no static imports) ---------------- */
+/* ---------------- Dynamic SDK loaders (toolbox-safe) ---------------- */
 
+/** Prefer globals if the host injected them. */
 async function getGlobalSdk(): Promise<MiniAppSdk | null> {
   if (typeof window === "undefined") return null;
   const g = window as any;
-  // Some clients expose one of these:
   return (
     g?.farcaster?.miniapp?.sdk ||
-    g?.farcaster?.actions || // older globals sometimes nest actions here
-    g?.sdk || null
+    g?.farcaster?.actions || // some older builds expose actions directly
+    g?.sdk ||
+    null
   );
 }
 
-/** Load @farcaster/miniapp-sdk (Warpcast Mini App SDK) */
-export async function getMiniSdk(): Promise<MiniAppSdk | null> {
-  // Prefer any global first (fast path)
-  const global = await getGlobalSdk();
-  if (global) return global;
-
-  // Optional dependency — dynamic import so builds don’t fail if missing
+/** Use a string-based dynamic importer so bundlers don't resolve the module at build time. */
+async function tryImport<T = any>(spec: string): Promise<T | null> {
   try {
-    const mod: any = await import("@farcaster/miniapp-sdk");
-    return (mod?.sdk || mod?.default || null) as MiniAppSdk | null;
+    const importer = Function("m", "return import(m)") as (m: string) => Promise<any>;
+    const mod = await importer(spec);
+    return (mod?.sdk ?? mod?.default ?? mod) as T;
   } catch {
     return null;
   }
 }
 
-/** Load @farcaster/frame-sdk (some clients expose this first) */
-export async function getFrameSdk(): Promise<MiniAppSdk | null> {
-  // Try globals first (some runtimes attach to window.sdk)
+/** Load @farcaster/miniapp-sdk (optional dependency) without tripping bundlers. */
+export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   const global = await getGlobalSdk();
   if (global) return global;
+  // no static string literal import here:
+  const fromModule = await tryImport<MiniAppSdk>("@farcaster/miniapp-sdk");
+  return (fromModule as any) || null;
+}
 
-  try {
-    const mod: any = await import("@farcaster/frame-sdk");
-    return (mod?.sdk || mod?.default || null) as MiniAppSdk | null;
-  } catch {
-    return null;
-  }
+/** Load @farcaster/frame-sdk (optional dependency) without tripping bundlers. */
+export async function getFrameSdk(): Promise<MiniAppSdk | null> {
+  const global = await getGlobalSdk();
+  if (global) return global;
+  const fromModule = await tryImport<MiniAppSdk>("@farcaster/frame-sdk");
+  return (fromModule as any) || null;
 }
 
 /** Ready ping — safe to call anywhere */
@@ -134,7 +134,7 @@ async function tryBaseComposeCast(args: { text?: string; embeds?: string[] }) {
   return false;
 }
 
-/* ---------------- Open URL inside Warpcast when possible ---------------- */
+/* ---------------- Open URL inside Warpcast/Base when possible ---------------- */
 
 export async function openInMini(url: string): Promise<boolean> {
   const safe = safeUrl(url);
