@@ -1,4 +1,5 @@
 // lib/miniapp.ts
+
 /** Farcaster Mini App SDK shape (tolerant to older builds) */
 type MiniAppSdk = {
   actions?: {
@@ -235,8 +236,9 @@ export async function openInMini(url: string): Promise<boolean> {
 
 /**
  * Compose everywhere:
- * - Inside Warpcast (Mini App): sdk.actions.composeCast (official) 
- * - Else: open Warpcast web composer (works on mobile & desktop)
+ * - Inside Base app ➜ MiniKit bridge
+ * - Inside Warpcast ➜ official Mini App SDK compose
+ * - Else ➜ Warpcast web composer (new tab)
  */
 export async function composeCastEverywhere({
   text = "",
@@ -247,7 +249,7 @@ export async function composeCastEverywhere({
 } = {}): Promise<"sdk" | "web"> {
   const normalized = (embeds || []).map((e) => toAbsoluteUrl(e, SITE_URL));
 
-  // 1) Try Base MiniKit bridge (if user is inside Base app WebView)
+  // 1) Try Base MiniKit bridge
   if (await tryBaseComposeCast({ text, embeds: normalized })) {
     return "sdk";
   }
@@ -272,3 +274,5 @@ export async function composeCastEverywhere({
   }
   return "web";
 }
+
+export type { MiniAppSdk };
