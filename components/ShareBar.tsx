@@ -1,9 +1,8 @@
 // components/ShareBar.tsx
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
-import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
+import { useCallback, useMemo, useState } from "react";
+import { shareOrCast } from "@/lib/share";
 
 type Token = {
   token_address: `0x${string}`;
@@ -14,8 +13,12 @@ type Token = {
   tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
+const FARCASTER_MINIAPP_LINK =
+  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
 export default function ShareBar({
-  address,
+  address: _unused,
   tokens,
   selectedSymbols = [],
 }: {
@@ -23,6 +26,8 @@ export default function ShareBar({
   tokens: Token[];
   selectedSymbols?: string[];
 }) {
+  const [msg, setMsg] = useState<string | null>(null);
+
   const selected = useMemo(() => {
     if (!selectedSymbols.length) return [] as Token[];
     const wanted = new Set(selectedSymbols.map((s) => s.toUpperCase()));
@@ -35,28 +40,6 @@ export default function ShareBar({
       return true;
     });
   }, [tokens, selectedSymbols]);
-
-  const site =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-
-  // ----- PNG embed URLs (ALL vs SELECTED) -----
-  const imgAllUrl = useMemo(() => {
-    const u = new URL(`/api/share/altar`, site);
-    u.searchParams.set("address", address);
-    u.searchParams.set("_", String(Date.now())); // cache-bust for testing
-    return u.toString();
-  }, [site, address]);
-
-  const imgSelectedUrl = useMemo(() => {
-    const u = new URL(`/api/share/altar`, site);
-    u.searchParams.set("address", address);
-    if (selected.length) u.searchParams.set("symbols", selected.map((t) => t.symbol).join(","));
-    u.searchParams.set("_", String(Date.now()));
-    return u.toString();
-  }, [site, address, selected]);
-
-  const ctaUrl = useMemo(() => site + "/", [site]);
 
   const titleLine = (list: Token[]) =>
     list.length === 1
@@ -84,41 +67,61 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  // —— X / Twitter ——
-  function openXShare(text: string, url?: string) {
+  const site =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
+  const shareAllFC = useCallback(async () => {
+    setMsg(null);
+    const text = buildText(tokens, 320);
+    const url = site + "/";
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open composer.");
+  }, [tokens, site]);
+
+  const shareSelectedFC = useCallback(async () => {
+    if (!selected.length) return;
+    setMsg(null);
+    const text = buildText(selected, 320);
+    const url = site + "/";
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open composer.");
+  }, [selected, site]);
+
+  // Optional X/Twitter (unchanged)
+  const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
     if (url) params.set("url", url);
     const href = `${base}?${params.toString()}`;
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
-  }
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), ctaUrl), [tokens, ctaUrl]);
+  }, []);
+  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), ctaUrl);
-  }, [selected, ctaUrl]);
+    openXShare(buildText(selected, 280), site + "/");
+  }, [selected, site, openXShare]);
 
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        {/* Farcaster via reusable button */}
-        <ShareToFarcasterButton
-          text={buildText(tokens, 320)}
-          embeds={[imgAllUrl]}
+        {/* Farcaster */}
+        <button
+          onClick={shareAllFC}
+          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
           title="Share all relics on Farcaster"
         >
           Share Altar (Farcaster)
-        </ShareToFarcasterButton>
-
-        <ShareToFarcasterButton
-          text={buildText(selected, 320)}
-          embeds={[imgSelectedUrl]}
+        </button>
+        <button
+          onClick={shareSelectedFC}
           disabled={!selected.length}
+          className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
           title="Share selected relics on Farcaster"
         >
           Share Selected (Farcaster)
-        </ShareToFarcasterButton>
+        </button>
 
         {/* X / Twitter */}
         <button
@@ -138,31 +141,7 @@ export default function ShareBar({
         </button>
       </div>
 
-      {/* Utility links to the generated image(s) */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-        <a
-          href={imgAllUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="underline hover:text-zinc-200"
-          title="Open generated altar image in a new tab"
-        >
-          Open Altar Image
-        </a>
-        <span>·</span>
-        <a
-          href={imgSelectedUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={`underline hover:text-zinc-200 ${!selected.length ? "pointer-events-none opacity-50" : ""}`}
-          onClick={(e) => {
-            if (!selected.length) e.preventDefault();
-          }}
-          title={selected.length ? "Open selected-only image" : "Select relics first"}
-        >
-          Open Selected Image
-        </a>
-      </div>
+      {msg && <div className="text-xs text-amber-300 mt-1">{msg}</div>}
     </div>
   );
 }
