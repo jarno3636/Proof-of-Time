@@ -29,20 +29,10 @@ export default function Nav() {
     } catch {}
   }, [address, connector]);
 
-  // find common connectors (unchanged)
-  const byId: Record<string, (typeof connectors)[number]> = useMemo(
-    () => Object.fromEntries(connectors.map((c) => [c.id, c])),
-    [connectors]
-  );
-  const injected =
-    connectors.find((c) => /injected/i.test(c.name)) || byId["injected"];
-  const coinbaseSDK =
-    connectors.find((c) => /coinbase/i.test(c.name)) || byId["coinbaseWalletSDK"];
-
-  // (kept) gentle auto-reconnect after disconnect — but NOT inside Farcaster
+  // gentle auto-reconnect after disconnect — but NOT inside Farcaster (prevents popup block)
   const triedAutoReconnectRef = useRef(false);
   useEffect(() => {
-    if (insideFarcaster) return; // avoid popup-block in mini-app
+    if (insideFarcaster) return;
     if (accountStatus !== "disconnected") {
       triedAutoReconnectRef.current = false;
       return;
@@ -50,7 +40,7 @@ export default function Nav() {
     if (triedAutoReconnectRef.current) return;
     const lastId =
       (typeof window !== "undefined" ? localStorage.getItem(LAST_CONNECTOR_KEY) : null) || "";
-    const last = byId[lastId];
+    const last = connectors.find((c) => c.id === lastId);
     if (last) {
       triedAutoReconnectRef.current = true;
       const t = setTimeout(() => {
@@ -58,7 +48,7 @@ export default function Nav() {
       }, 200);
       return () => clearTimeout(t);
     }
-  }, [accountStatus, byId, connectAsync, insideFarcaster]);
+  }, [accountStatus, connectors, connectAsync, insideFarcaster]);
 
   const baseBtn =
     "inline-flex items-center gap-2 rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-5 py-3 text-sm font-semibold text-[#0b0e14] transition disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#BBA46A]/40 [appearance:none]";
@@ -92,26 +82,15 @@ export default function Nav() {
                 ready &&
                 account &&
                 chain &&
-                (!authenticationStatus ||
-                  authenticationStatus === "authenticated");
+                (!authenticationStatus || authenticationStatus === "authenticated");
 
               const handleClick = async () => {
-                // ✅ IMPORTANT: Inside Warpcast, force the Injected connector
-                // (Base/Coinbase provides an injected provider in the in-app webview).
-                if (insideFarcaster && injected) {
-                  try {
-                    await connectAsync({ connector: injected });
-                    localStorage.setItem(LAST_CONNECTOR_KEY, injected.id);
-                    return;
-                  } catch {
-                    // fall back to modal if injected fails
-                    openConnectModal?.();
-                    return;
-                  }
+                // ✅ Inside Warpcast: go straight to RainbowKit modal (WalletConnect flow).
+                if (insideFarcaster) {
+                  openConnectModal?.();
+                  return;
                 }
-
-                // Normal web: prefer last-used connector; if that is coinbaseSDK it may open a popup.
-                // Let RainbowKit modal handle UX in that case.
+                // 🌐 Normal web: also just open modal; your auto-reconnect covers quick paths.
                 openConnectModal?.();
               };
 
