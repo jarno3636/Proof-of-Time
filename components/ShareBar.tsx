@@ -1,14 +1,11 @@
-// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useMemo } from "react";
 import {
   buildFarcasterComposeUrl,
-  composeCast as composeCastMini,
-  openInMini,                 // ← use SDK/MiniKit to open URL in-app
+  FARCASTER_MINIAPP_LINK,
   isFarcasterUA,
-  isBaseAppUA,
-  FARCASTER_MINIAPP_LINK,     // ← keep your Farcaster directory URL as the embed
+  isMobileUA,
 } from "@/lib/miniapp";
 
 type Token = {
@@ -29,28 +26,22 @@ export default function ShareBar({
   tokens: Token[];
   selectedSymbols?: string[];
 }) {
-  // Dedup + filter by symbol
-  const selected = useMemo(() => {
-    if (!selectedSymbols.length) return [] as Token[];
-    const wanted = new Set(selectedSymbols);
-    const seen = new Set<string>();
-    return tokens.filter((t) => {
-      if (!wanted.has(t.symbol)) return false;
-      if (seen.has(t.symbol)) return false;
-      seen.add(t.symbol);
-      return true;
-    });
-  }, [tokens, selectedSymbols]);
+  const selected = useMemo(
+    () =>
+      selectedSymbols.length
+        ? tokens.filter((t) => selectedSymbols.includes(t.symbol))
+        : [],
+    [tokens, selectedSymbols]
+  );
 
-  // Always embed your Farcaster directory link so posts resolve in-app
+  // Always embed your Farcaster mini-app directory link (stays in-app inside Warpcast)
   const FC_EMBED = FARCASTER_MINIAPP_LINK;
 
-  // X / Twitter still points to your homepage for the card
+  // X / Twitter still points to your homepage for card preview
   const CTA_URL =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // ---------- Text builders ----------
   const titleLine = (list: Token[]) =>
     list.length === 1
       ? "⟡ Relic Revealed"
@@ -59,8 +50,10 @@ export default function ShareBar({
       : "⟡ Proof of Time — Altar";
 
   const lineFor = (t: Token) => {
+    const sym = `$${t.symbol}`;
+    const d = `${t.days}d`;
     const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-    return `• $${t.symbol} — ${t.days}d (${badge})`;
+    return `• ${sym} — ${d} (${badge})`;
   };
 
   const buildText = (list: Token[]) =>
@@ -71,57 +64,38 @@ export default function ShareBar({
       "Time to let those diamond hands shine 💎✊",
     ].join("\n");
 
-  // ---------- Farcaster (robust, no deep-link) ----------
-  const shareFC = useCallback(
-    async (list: Token[]) => {
-      const text = buildText(list);
+  // ---------- Farcaster (force web composer everywhere) ----------
+  const shareFC = useCallback((text: string) => {
+    const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
 
-      // 1) Try native compose when available (mini app or Base bridge)
-      const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
-      if (ok) return;
+    // Same-tab navigation on mobile & inside Warpcast webview (avoids popup blockers / app-store)
+    if (isMobileUA() || isFarcasterUA()) {
+      window.location.href = url;
+      return;
+    }
 
-      // 2) Build the universal web composer URL
-      const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
+    // Desktop web: open a new tab if possible
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = url; // fallback if popups are blocked
+  }, [FC_EMBED]);
 
-      // 3) Ask SDK/MiniKit to open it in-app (works in Farcaster + Base browsers)
-      const handled = await openInMini(url);
-      if (handled) return;
-
-      // 4) Fallbacks: stay on web composer (avoids “download app” interstitials)
-      if (typeof window !== "undefined") {
-        if (isFarcasterUA() || isBaseAppUA()) {
-          // Inside Farcaster or Base in-app browser – navigate same tab
-          window.location.href = url;
-        } else {
-          // Desktop/mobile web – open new tab, fallback to same tab if blocked
-          const w = window.open(url, "_blank", "noopener,noreferrer");
-          if (!w) window.location.href = url;
-        }
-      }
-    },
-    [FC_EMBED]
-  );
-
-  const shareAllFC = useCallback(() => { void shareFC(tokens); }, [tokens, shareFC]);
+  const shareAllFC = useCallback(() => shareFC(buildText(tokens)), [tokens, shareFC]);
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
-    void shareFC(selected);
+    shareFC(buildText(selected));
   }, [selected, shareFC]);
 
   // ---------- X / Twitter ----------
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
-    if (url) params.set("url", url); // keep link so the card renders
+    if (url) params.set("url", url);
     const href = `${base}?${params.toString()}`;
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }
 
-  const shareAllX = useCallback(() => {
-    openXShare(buildText(tokens), CTA_URL);
-  }, [tokens, CTA_URL]);
-
+  const shareAllX = useCallback(() => openXShare(buildText(tokens), CTA_URL), [tokens, CTA_URL]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     openXShare(buildText(selected), CTA_URL);
@@ -132,7 +106,7 @@ export default function ShareBar({
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={shareAllFC}
-          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
+          className="px-4 py-2 rounded-full bg-white/10 hover:bg白/20 transition"
           title="Share all relics on Farcaster"
         >
           Share Altar (Farcaster)
