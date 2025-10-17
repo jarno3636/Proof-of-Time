@@ -124,7 +124,6 @@ export async function signalMiniAppReady(): Promise<void> {
   try {
     await ensureReady(900);
   } catch {}
-  // also ping any legacy globals if present (no-ops otherwise)
   try {
     (window as any)?.farcaster?.actions?.ready?.();
   } catch {}
@@ -247,8 +246,9 @@ export async function composeCast({
     try {
       await ensureReady();
       await frame.actions.composeCast({ text, embeds: normEmbeds });
-      return true;
     } catch {}
+    else {}
+    if (frame?.actions?.composeCast) return true;
   }
 
   // Mini App SDK (official mini runtime)
