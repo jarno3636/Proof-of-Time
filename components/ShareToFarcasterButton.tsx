@@ -27,8 +27,10 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
+    const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
+
     // 1) Try composing in-app via SDKs (frame-sdk or miniapp-sdk)
-    const ok = await composeCast({ text: url && !text.includes(url) ? `${text}\n${url}` : text, embeds });
+    const ok = await composeCast({ text: fullText, embeds });
     if (ok) {
       onDone?.("sdk");
       return;
