@@ -75,3 +75,57 @@ export function buildFarcasterComposeUrl({
   }
   return url.toString();
 }
+
+/* ---------------- Mini SDK (restored so existing imports build) ---------------- */
+
+/**
+ * Tries globals first (fast), then a dynamic import via Function(import)
+ * to avoid bundler resolution issues in Next.js/edge, then globals again.
+ */
+export async function getMiniSdk(): Promise<MiniAppSdk | null> {
+  if (typeof window === "undefined") return null;
+
+  const g = window as any;
+  const globalSdk: MiniAppSdk | null =
+    g?.farcaster?.miniapp?.sdk || g?.sdk || null;
+  if (globalSdk) return globalSdk;
+
+  try {
+    const spec = "@farcaster/miniapp-sdk";
+    const importer = (Function("m", "return import(m)")) as (m: string) => Promise<any>;
+    const mod = await importer(spec).catch(() => null);
+    const fromModule: MiniAppSdk | undefined = mod?.sdk ?? mod?.default;
+    if (fromModule) return fromModule;
+  } catch {
+    // ignore
+  }
+
+  return (g?.farcaster?.miniapp?.sdk || g?.sdk || null) as MiniAppSdk | null;
+}
+
+/** Call sdk.actions.ready() quickly so mini splash never hangs (no-throw). */
+export async function ensureReady(timeoutMs = 900): Promise<void> {
+  try {
+    const sdk = await getMiniSdk();
+    if (!sdk?.actions?.ready) return;
+    await Promise.race<void>([
+      Promise.resolve(sdk.actions.ready()),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  } catch {
+    // noop
+  }
+}
+
+/** Legacy-friendly wrapper used by some components (safe to call anywhere). */
+export async function signalMiniAppReady(): Promise<void> {
+  try {
+    await ensureReady(900);
+  } catch {}
+  try {
+    (window as any)?.farcaster?.actions?.ready?.();
+  } catch {}
+  try {
+    (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.();
+  } catch {}
+}
