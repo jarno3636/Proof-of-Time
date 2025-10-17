@@ -1,8 +1,9 @@
 // app/api/share/altar/route.tsx
-import { ImageResponse } from "next/og";            // ✅ use next/og for ImageResponse
-import type { NextRequest } from "next/server";     // ✅ type-only import for NextRequest
+import type { NextRequest } from "next/server";
+import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 const IMG_WIDTH = 1200;
 const IMG_HEIGHT = 630;
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
       .filter(Boolean)
   );
 
-  // Blank slate if address invalid
+  // Always return a valid PNG (even if address is missing / invalid)
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return new ImageResponse(
       (
