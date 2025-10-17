@@ -1,32 +1,13 @@
-// components/FarcasterReady.tsx
 "use client";
 import { useEffect } from "react";
+import { ensureReady } from "@/lib/miniapp";
 
-export default function FarcasterReady() {
+export default function FarcasterMiniBridge() {
   useEffect(() => {
-    let done = false;
-    const tryReady = () => {
-      try {
-        (window as any)?.farcaster?.actions?.ready?.();
-        done = !!(window as any)?.farcaster?.actions;
-      } catch {}
-    };
-
-    // First shot, then poll for a few seconds in case the bridge injects late
-    tryReady();
-    const iv = setInterval(() => {
-      if (done) return clearInterval(iv);
-      tryReady();
-    }, 200);
-
-    // Stop after ~8s
-    const timeout = setTimeout(() => clearInterval(iv), 8000);
-
-    return () => {
-      clearInterval(iv);
-      clearTimeout(timeout);
-    };
+    // try Farcaster SDK
+    ensureReady();
+    // tiny fallback if SDK isn’t present but window.farcaster is
+    try { (window as any)?.farcaster?.actions?.ready?.(); } catch {}
   }, []);
-
   return null;
 }
