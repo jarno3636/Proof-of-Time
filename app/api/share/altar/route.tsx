@@ -33,6 +33,15 @@ type ApiToken = {
   balance?: number;
 };
 
+// Common headers so Warpcast & webviews can fetch & cache safely
+const IMG_HEADERS = {
+  "content-type": "image/png",
+  // Adjust caching to taste. This lets Warpcast cache for 10m and browsers too.
+  "cache-control": "public, max-age=600, s-maxage=600, stale-while-revalidate=86400",
+  // Allow any referrer (Farcaster/third-party clients) to pull the PNG
+  "access-control-allow-origin": "*",
+};
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const origin = getOrigin(req);
@@ -46,7 +55,7 @@ export async function GET(req: NextRequest) {
       .filter(Boolean)
   );
 
-  // Always return a valid PNG (even if address is missing / invalid)
+  // Minimal blank slate if address invalid
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return new ImageResponse(
       (
@@ -67,20 +76,25 @@ export async function GET(req: NextRequest) {
           Proof of Time
         </div>
       ),
-      { width: IMG_WIDTH, height: IMG_HEIGHT }
+      { width: IMG_WIDTH, height: IMG_HEIGHT, headers: IMG_HEADERS }
     );
   }
 
-  // Fetch altar tokens (your existing JSON API)
-  const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
-  const j = (await r.json()) as { address: string; tokens: ApiToken[] };
+  // Fetch altar tokens (be resilient)
+  let tokens: ApiToken[] = [];
+  try {
+    const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
+    const j = (await r.json()) as { address: string; tokens: ApiToken[] };
+    tokens = j?.tokens || [];
+  } catch {
+    // swallow; we’ll render a graceful “no data” image below
+  }
 
-  let tokens: ApiToken[] = j?.tokens || [];
   if (selectedSet.size) {
     tokens = tokens.filter((t) => selectedSet.has(t.symbol.toUpperCase()));
   }
   // Default to top 3 if nothing is selected
-  if (!tokens.length) tokens = j?.tokens?.slice(0, 3) || [];
+  if (!tokens.length) tokens = tokens.slice(0, 3);
 
   // Visual styles
   const bg = "#0b0e14";
@@ -157,10 +171,10 @@ export async function GET(req: NextRequest) {
           >
             {tokens.slice(0, 3).map((t, i) => {
               const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-              const tier = t.tier;
+              const tier = t.tier || "Relic";
               return (
                 <div
-                  key={i}
+                  key={`${t.symbol}-${i}`}
                   style={{
                     position: "relative",
                     borderRadius: 22,
@@ -228,6 +242,6 @@ export async function GET(req: NextRequest) {
         </div>
       </div>
     ),
-    { width: IMG_WIDTH, height: IMG_HEIGHT }
+    { width: IMG_WIDTH, height: IMG_HEIGHT, headers: IMG_HEADERS }
   );
 }
