@@ -1,3 +1,4 @@
+// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useMemo } from "react";
@@ -5,7 +6,7 @@ import {
   buildFarcasterComposeUrl,
   composeCast as composeCastMini,
   isFarcasterUA,
-  miniEntryUrl,
+  FARCASTER_MINIAPP_LINK,     // ⬅️ import the in-app Farcaster URL
 } from "@/lib/miniapp";
 
 type Token = {
@@ -26,85 +27,75 @@ export default function ShareBar({
   tokens: Token[];
   selectedSymbols?: string[];
 }) {
-  const selected = useMemo(() => {
-    if (!selectedSymbols.length) return [] as Token[];
-    const wanted = new Set(selectedSymbols);
-    const seen = new Set<string>();
-    return tokens.filter((t) => {
-      if (!wanted.has(t.symbol)) return false;
-      if (seen.has(t.symbol)) return false;
-      seen.add(t.symbol);
-      return true;
-    });
-  }, [tokens, selectedSymbols]);
+  const selected = useMemo(
+    () =>
+      selectedSymbols.length
+        ? tokens.filter((t) => selectedSymbols.includes(t.symbol))
+        : [],
+    [tokens, selectedSymbols]
+  );
 
-  const site =
+  // 🔒 Always embed the Farcaster directory URL so it opens in-app
+  const FC_EMBED = FARCASTER_MINIAPP_LINK;
+
+  // X / Twitter still points to your homepage for the card
+  const CTA_URL =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // Frame embed keeps it in-app; CTA points to your mini entry
-  const FC_EMBED = `${site}/frames`;
-  const CTA_URL = miniEntryUrl();
-
   const titleLine = (list: Token[]) =>
-    list.length === 1
-      ? "⟡ Relic Revealed"
-      : list.length <= 3
-      ? "⟡ Relics Revealed"
-      : "⟡ Proof of Time — Altar";
+    list.length === 1 ? "⟡ Relic Revealed" : list.length <= 3 ? "⟡ Relics Revealed" : "⟡ Proof of Time — Altar";
 
   const lineFor = (t: Token) => {
+    const sym = `$${t.symbol}`;
+    const d = `${t.days}d`;
     const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-    return `• $${t.symbol} — ${t.days}d (${badge})`;
+    return `• ${sym} — ${d} (${badge})`;
   };
 
-  const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
-  const buildText = (list: Token[], cap?: number) =>
-    safeTrim(
-      [
-        titleLine(list),
-        ...list.map(lineFor),
-        "Time > hype. #ProofOfTime ⏳",
-        "Time to let those diamond hands shine 💎✊",
-      ].join("\n"),
-      cap
-    );
+  const buildText = (list: Token[]) =>
+    [
+      titleLine(list),
+      ...list.map(lineFor),
+      "Time > hype. #ProofOfTime ⏳",
+      "Time to let those diamond hands shine 💎✊",
+    ].join("\n");
 
-  // Farcaster
-  const shareFC = useCallback(
-    async (list: Token[]) => {
-      const text = buildText(list, 320);
-      const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
-      if (ok) return;
+  // -------- Farcaster ----------
+  const shareFC = useCallback(async (text: string) => {
+    // 1) Try native mini-app compose
+    const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
+    if (ok) return;
 
-      const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
-      if (typeof window !== "undefined") {
-        if (isFarcasterUA()) window.location.href = url;
-        else {
-          const w = window.open(url, "_blank", "noopener,noreferrer");
-          if (!w) window.location.href = url;
-        }
+    // 2) Fallback to Warpcast web composer (still in-app because embed is farcaster.xyz)
+    const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
+    if (typeof window !== "undefined") {
+      if (isFarcasterUA()) {
+        window.location.href = url;
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
       }
-    },
-    [FC_EMBED]
-  );
+    }
+  }, [FC_EMBED]);
 
-  const shareAllFC = useCallback(() => { void shareFC(tokens); }, [tokens, shareFC]);
-  const shareSelectedFC = useCallback(() => { if (selected.length) void shareFC(selected); }, [selected, shareFC]);
+  const shareAllFC = useCallback(() => { void shareFC(buildText(tokens)); }, [tokens, shareFC]);
+  const shareSelectedFC = useCallback(() => {
+    if (!selected.length) return;
+    void shareFC(buildText(selected));
+  }, [selected, shareFC]);
 
-  // X / Twitter
+  // -------- X / Twitter ----------
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
-    if (url) params.set("url", url);
-    const href = `${base}?${params.toString()}`;
-    const w = window.open(href, "_blank", "noopener,noreferrer");
-    if (!w) window.location.href = href;
+    if (url) params.set("url", url); // keep link so the card renders
+    window.open(`${base}?${params.toString()}`, "_blank", "noopener,noreferrer");
   }
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), CTA_URL), [tokens, CTA_URL]);
+
+  const shareAllX = useCallback(() => openXShare(buildText(tokens), CTA_URL), [tokens, CTA_URL]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), CTA_URL);
+    openXShare(buildText(selected), CTA_URL);
   }, [selected, CTA_URL]);
 
   return (
