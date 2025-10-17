@@ -20,8 +20,7 @@ import {
 } from "@rainbow-me/rainbowkit/wallets";
 
 import { MiniKitContextProvider } from "@/providers/MiniKitProvider";
-import FarcasterMiniBridge from "@/components/FarcasterMiniBridge";
-import AutoConnectMini from "@/components/AutoConnectMini"; // ← NEW
+import FarcasterMiniBridge from "@/components/FarcasterMiniBridge"; // keeps Warpcast splash happy
 
 const INFURA_KEY =
   process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
@@ -30,13 +29,14 @@ const WC_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
   "";
 
+/** Put injected first so your click-to-connect prefers the in-app provider. */
 const wallets = [
   {
     groupName: "Popular",
     wallets: [
       injectedWallet,
+      coinbaseWallet,      // keep, but won’t auto-open
       metaMaskWallet,
-      coinbaseWallet,
       rainbowWallet,
       rabbyWallet,
       ...(WC_PROJECT_ID ? [walletConnectWallet] : []),
@@ -49,6 +49,7 @@ const connectors = connectorsForWallets(wallets, {
   projectId: WC_PROJECT_ID || "stub-project-id",
 });
 
+/** Important: don’t auto-reconnect on mount (prevents popup-blocked toasts). */
 const config = createConfig({
   chains: [base],
   connectors,
@@ -60,6 +61,7 @@ const config = createConfig({
     ),
   },
   ssr: true,
+  // autoConnect is off by default in wagmi v2; leaving it off.
 });
 
 const qc = new QueryClient();
@@ -67,7 +69,8 @@ const qc = new QueryClient();
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <MiniKitContextProvider>
-      <WagmiProvider config={config} reconnectOnMount>
+      {/* ↓↓↓ turn OFF reconnectOnMount so no silent deep-link attempts happen */}
+      <WagmiProvider config={config} reconnectOnMount={false}>
         <QueryClientProvider client={qc}>
           <RainbowKitProvider
             initialChain={base}
@@ -75,10 +78,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             modalSize="compact"
             coolMode
           >
-            {/* ✅ Signals Warpcast mini-app readiness */}
             <FarcasterMiniBridge />
-            {/* ✅ Auto-connect when inside Warpcast */}
-            <AutoConnectMini />
             {children}
           </RainbowKitProvider>
         </QueryClientProvider>
