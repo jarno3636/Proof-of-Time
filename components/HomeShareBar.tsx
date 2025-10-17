@@ -1,15 +1,11 @@
+// components/HomeShareBar.tsx
 "use client";
 
 import { useMemo, useCallback } from "react";
-import {
-  FARCASTER_MINIAPP_LINK,
-  buildFarcasterComposeUrl,
-  isFarcasterUA,
-  isMobileUA,
-} from "@/lib/miniapp";
+import { FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
+import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
 export default function HomeShareBar() {
-  // Fun/varied lines you can expand later
   const castLines = useMemo(
     () =>
       [
@@ -30,20 +26,6 @@ export default function HomeShareBar() {
     return castLines[i] || castLines[0];
   }, [castLines]);
 
-  const FC_EMBED = FARCASTER_MINIAPP_LINK;
-
-  const shareToFarcaster = useCallback(() => {
-    const text = pick();
-    const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
-
-    if (isMobileUA() || isFarcasterUA()) {
-      window.location.href = url;   // same-tab nav in mobile/webview
-      return;
-    }
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (!w) window.location.href = url;
-  }, [pick, FC_EMBED]);
-
   const CTA_URL =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
@@ -57,22 +39,23 @@ export default function HomeShareBar() {
     if (!w) window.location.href = href;
   }, [pick, CTA_URL]);
 
+  const text = pick();
+
   return (
     <div className="mt-8 flex flex-wrap items-center gap-3">
-      <button
-        onClick={shareToFarcaster}
-        className="rounded-2xl bg-[#BBA46A] text-[#0b0e14] px-4 py-3 font-semibold hover:bg-[#d6c289] transition"
+      <ShareToFarcasterButton
+        text={text}
+        embeds={[FARCASTER_MINIAPP_LINK]}
       >
         Share on Farcaster
-      </button>
+      </ShareToFarcasterButton>
+
       <button
         onClick={shareToX}
         className="rounded-2xl border border-white/15 px-4 py-3 text-zinc-200 hover:bg-white/10 transition"
       >
         Tweet It
       </button>
-      <span className="text-xs text-zinc-500">
-      </span>
     </div>
   );
 }
