@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { buildFarcasterComposeUrl, FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
+import { composeCastEverywhere, FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
 
 type Token = {
   token_address: `0x${string}`;
@@ -44,7 +44,6 @@ export default function ShareBar({
   const imgAllUrl = useMemo(() => {
     const u = new URL(`/api/share/altar`, site);
     u.searchParams.set("address", address);
-    // cache-bust so users see up-to-date card while testing
     u.searchParams.set("_", String(Date.now()));
     return u.toString();
   }, [site, address]);
@@ -52,9 +51,7 @@ export default function ShareBar({
   const imgSelectedUrl = useMemo(() => {
     const u = new URL(`/api/share/altar`, site);
     u.searchParams.set("address", address);
-    if (selected.length) {
-      u.searchParams.set("symbols", selected.map((t) => t.symbol).join(","));
-    }
+    if (selected.length) u.searchParams.set("symbols", selected.map((t) => t.symbol).join(","));
     u.searchParams.set("_", String(Date.now()));
     return u.toString();
   }, [site, address, selected]);
@@ -87,22 +84,15 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  // —— Farcaster: ALWAYS use Warpcast web composer in a new tab ——
-  const openWarpcastComposer = useCallback((text: string, embedUrl: string) => {
-    const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
-    // Always new tab to avoid mobile deep-link intercepts that trigger “download app”
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (!w) window.location.href = url; // popup blocked: same-tab fallback
-  }, []);
+  // —— Farcaster: try SDK compose; fall back to web composer ——
+  const shareAllFC = useCallback(() => {
+    void composeCastEverywhere({ text: buildText(tokens, 320), embeds: [imgAllUrl] });
+  }, [tokens, imgAllUrl]);
 
-  const shareAllFC = useCallback(
-    () => openWarpcastComposer(buildText(tokens, 320), imgAllUrl),
-    [tokens, imgAllUrl, openWarpcastComposer]
-  );
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
-    openWarpcastComposer(buildText(selected, 320), imgSelectedUrl);
-  }, [selected, imgSelectedUrl, openWarpcastComposer]);
+    void composeCastEverywhere({ text: buildText(selected, 320), embeds: [imgSelectedUrl] });
+  }, [selected, imgSelectedUrl]);
 
   // —— X / Twitter ——
   function openXShare(text: string, url?: string) {
@@ -157,7 +147,7 @@ export default function ShareBar({
         </button>
       </div>
 
-      {/* Small utility row — lets users grab the image too */}
+      {/* Utility links to the generated image(s) */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
         <a
           href={imgAllUrl}
