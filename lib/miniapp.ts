@@ -3,13 +3,20 @@
 /** Minimal types for the SDKs (tolerant to older builds) */
 type MiniAppSdk = {
   actions?: {
+    // Navigation
     openUrl?: (url: string | { url: string }) => Promise<void> | void;
     openURL?: (url: string) => Promise<void> | void; // legacy
+
+    // Compose / share
     composeCast?: (args: { text?: string; embeds?: string[] }) => Promise<void> | void;
     share?: (args: { text?: string; embeds?: string[] }) => Promise<void> | void; // frame-sdk
+
+    // Ready
     ready?: () => Promise<void> | void;
   };
 };
+
+/* ---------------- Env + URL helpers ---------------- */
 
 export function siteOrigin() {
   if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
@@ -24,8 +31,54 @@ export function safeUrl(u = ""): string {
   }
 }
 
+function toAbsoluteHttpUrl(u = ""): string {
+  const abs = safeUrl(u);
+  return /^https?:\/\//i.test(abs) ? abs : "";
+}
+
+export function isFarcasterUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
+}
+
+/* ---------------- Warpcast web composer URL ---------------- */
+
+export function buildFarcasterComposeUrl({
+  text = "",
+  embeds = [] as string[],
+}: {
+  text?: string;
+  embeds?: string[];
+} = {}): string {
+  const url = new URL("https://warpcast.com/~/compose");
+  if (text) url.searchParams.set("text", text);
+  for (const e of embeds || []) {
+    const abs = toAbsoluteHttpUrl(e);
+    if (abs) url.searchParams.append("embeds[]", abs);
+  }
+  return url.toString();
+}
+
+/* ---------------- Dynamic SDK loaders (no static imports) ---------------- */
+
+async function getGlobalSdk(): Promise<MiniAppSdk | null> {
+  if (typeof window === "undefined") return null;
+  const g = window as any;
+  // Some clients expose one of these:
+  return (
+    g?.farcaster?.miniapp?.sdk ||
+    g?.farcaster?.actions || // older globals sometimes nest actions here
+    g?.sdk || null
+  );
+}
+
 /** Load @farcaster/miniapp-sdk (Warpcast Mini App SDK) */
 export async function getMiniSdk(): Promise<MiniAppSdk | null> {
+  // Prefer any global first (fast path)
+  const global = await getGlobalSdk();
+  if (global) return global;
+
+  // Optional dependency — dynamic import so builds don’t fail if missing
   try {
     const mod: any = await import("@farcaster/miniapp-sdk");
     return (mod?.sdk || mod?.default || null) as MiniAppSdk | null;
@@ -34,8 +87,12 @@ export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   }
 }
 
-/** Load @farcaster/frame-sdk (some clients inject this first) */
+/** Load @farcaster/frame-sdk (some clients expose this first) */
 export async function getFrameSdk(): Promise<MiniAppSdk | null> {
+  // Try globals first (some runtimes attach to window.sdk)
+  const global = await getGlobalSdk();
+  if (global) return global;
+
   try {
     const mod: any = await import("@farcaster/frame-sdk");
     return (mod?.sdk || mod?.default || null) as MiniAppSdk | null;
@@ -44,52 +101,90 @@ export async function getFrameSdk(): Promise<MiniAppSdk | null> {
   }
 }
 
-/** Are we in the mini app? (best-effort) */
-export async function isMiniApp(): Promise<boolean> {
-  const mini = await getMiniSdk();
-  const frame = await getFrameSdk();
-  return Boolean(mini || frame);
+/** Ready ping — safe to call anywhere */
+export async function ensureReady(timeoutMs = 1200): Promise<void> {
+  try {
+    const sdk = (await getFrameSdk()) || (await getMiniSdk());
+    if (!sdk?.actions?.ready) return;
+    await Promise.race<void>([
+      Promise.resolve(sdk.actions.ready()),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  } catch {
+    // noop
+  }
 }
 
-/**
- * Try to open a URL *inside* the Farcaster mini app. Falls back to same-tab.
- * We do NOT rewrite the URL here; pass in a final absolute URL.
- */
+/* ---------------- Base App MiniKit (optional bridge) ---------------- */
+
+function getMiniKit(): any | null {
+  if (typeof window === "undefined") return null;
+  const w = window as any;
+  return w?.miniKit || w?.coinbase?.miniKit || null;
+}
+
+async function tryBaseComposeCast(args: { text?: string; embeds?: string[] }) {
+  try {
+    const mk = getMiniKit();
+    if (mk?.composeCast) {
+      await mk.composeCast(args);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+/* ---------------- Open URL inside Warpcast when possible ---------------- */
+
 export async function openInMini(url: string): Promise<boolean> {
-  if (!url) return false;
   const safe = safeUrl(url);
   if (!safe) return false;
 
-  // Try frame-sdk then miniapp-sdk (both expose openUrl/openURL variants)
-  const frame = await getFrameSdk();
-  if (frame?.actions?.openUrl) {
-    try {
-      await (frame.actions.openUrl as any)(safe);
+  // 1) Base App bridge
+  try {
+    const mk = getMiniKit();
+    if (mk?.openUrl) {
+      await mk.openUrl(safe);
       return true;
-    } catch {}
-  }
-  if (frame?.actions?.openURL) {
-    try {
+    }
+    if (mk?.openURL) {
+      await mk.openURL(safe);
+      return true;
+    }
+  } catch {}
+
+  // 2) Farcaster runtimes
+  try {
+    const frame = await getFrameSdk();
+    if (frame?.actions?.openUrl) {
+      try {
+        await (frame.actions.openUrl as any)(safe);
+      } catch {
+        await (frame.actions.openUrl as any)({ url: safe });
+      }
+      return true;
+    }
+    if (frame?.actions?.openURL) {
       await frame.actions.openURL(safe);
       return true;
-    } catch {}
-  }
+    }
 
-  const mini = await getMiniSdk();
-  if (mini?.actions?.openUrl) {
-    try {
-      await (mini.actions.openUrl as any)(safe);
+    const mini = await getMiniSdk();
+    if (mini?.actions?.openUrl) {
+      try {
+        await (mini.actions.openUrl as any)(safe);
+      } catch {
+        await (mini.actions.openUrl as any)({ url: safe });
+      }
       return true;
-    } catch {}
-  }
-  if (mini?.actions?.openURL) {
-    try {
+    }
+    if (mini?.actions?.openURL) {
       await mini.actions.openURL(safe);
       return true;
-    } catch {}
-  }
+    }
+  } catch {}
 
-  // Fallback to same-tab navigation
+  // 3) Fallback: same-tab nav
   if (typeof window !== "undefined") {
     try {
       window.location.assign(safe);
@@ -103,11 +198,11 @@ export async function openInMini(url: string): Promise<boolean> {
   return false;
 }
 
+/* ---------------- Compose helpers ---------------- */
+
 /**
- * Compose a cast in-app when possible.
- * - First try frame-sdk share/compose
- * - Then miniapp-sdk composeCast
- * Return true if handled in-app, false to let caller fallback (web composer).
+ * Try to compose a cast inside Warpcast/Base first.
+ * Returns true if handled natively; false to let caller open web composer.
  */
 export async function composeCast({
   text = "",
@@ -116,35 +211,62 @@ export async function composeCast({
   text?: string;
   embeds?: string[];
 } = {}): Promise<boolean> {
-  // Normalize embeds to absolute http(s)
-  const normEmbeds = (embeds || [])
-    .map((e) => safeUrl(e))
-    .filter(Boolean)
-    .filter((u) => /^https?:\/\//i.test(u));
+  const normEmbeds = (embeds || []).map(toAbsoluteHttpUrl).filter(Boolean);
 
-  // Frame SDK (some clients expose share() or openUrl())
+  // Base App MiniKit (optional)
+  if (await tryBaseComposeCast({ text, embeds: normEmbeds })) return true;
+
+  // Frame SDK (newer share / compose)
   const frame = await getFrameSdk();
   if (frame?.actions?.share) {
     try {
+      await ensureReady();
       await frame.actions.share({ text, embeds: normEmbeds });
       return true;
     } catch {}
   }
   if (frame?.actions?.composeCast) {
     try {
+      await ensureReady();
       await frame.actions.composeCast({ text, embeds: normEmbeds });
       return true;
     } catch {}
   }
 
-  // Mini App SDK (official)
+  // Mini App SDK (official mini runtime)
   const mini = await getMiniSdk();
   if (mini?.actions?.composeCast) {
     try {
+      await ensureReady();
       await mini.actions.composeCast({ text, embeds: normEmbeds });
       return true;
     } catch {}
   }
 
   return false;
+}
+
+/**
+ * Compose everywhere:
+ * - Try SDKs (Base MiniKit → Frame SDK → Mini App SDK)
+ * - Else open Warpcast web composer (in new tab; fallback to same tab)
+ *
+ * Returns "sdk" if in-app handled, otherwise "web".
+ */
+export async function composeCastEverywhere({
+  text = "",
+  embeds = [],
+}: {
+  text?: string;
+  embeds?: string[];
+} = {}): Promise<"sdk" | "web"> {
+  const ok = await composeCast({ text, embeds });
+  if (ok) return "sdk";
+
+  const url = buildFarcasterComposeUrl({ text, embeds });
+  if (typeof window !== "undefined") {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = url;
+  }
+  return "web";
 }
