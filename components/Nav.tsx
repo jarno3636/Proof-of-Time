@@ -1,46 +1,77 @@
+// components/Nav.tsx
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { useAccount, useConnect, useConnectors } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { isFarcasterUA } from "@/lib/miniapp";
 
 function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-const LAST_CONNECTOR_KEY = "pot_last_connector"; // 'injected' | 'walletConnect' | 'coinbaseWallet' | etc.
+const LAST_CONNECTOR_KEY = "pot_last_connector"; // stores connector.id
 
 export default function Nav() {
   const { address, status: accountStatus, isConnecting, connector } = useAccount();
   const { connectAsync, status: connectStatus } = useConnect();
   const connectors = useConnectors();
 
-  // Persist the connector whenever we are connected (covers modal & programmatic connects)
+  const insideFarcaster = useMemo(isFarcasterUA, []);
+
+  // Persist last-used connector id on connect (covers modal & programmatic)
   useEffect(() => {
     if (!address || !connector) return;
     try {
-      const id = (connector as any).type || (connector as any).id || "unknown";
+      const id = (connector as any).id || (connector as any).type || "unknown";
       localStorage.setItem(LAST_CONNECTOR_KEY, String(id));
     } catch {}
   }, [address, connector]);
 
-  // Prefer injected for one-click (Farcaster in-app, Base/Coinbase browsers, MetaMask)
-  const injected = connectors.find((c) => c.type === "injected");
+  // Helper: choose the best connector for this environment
+  const pickPreferred = useMemo(() => {
+    const byId: Record<string, (typeof connectors)[number]> = Object.fromEntries(
+      connectors.map((c) => [c.id, c])
+    );
 
-  // Loosen readiness check: if window.ethereum exists, allow quick attempt
+    const lastId = (typeof window !== "undefined" && localStorage.getItem(LAST_CONNECTOR_KEY)) || "";
+    const last = lastId && byId[lastId] ? byId[lastId] : null;
+
+    const coinbase =
+      connectors.find((c) => /coinbase/i.test(c.name)) || byId["coinbaseWalletSDK"];
+
+    const injected =
+      connectors.find((c) => /injected/i.test(c.name)) || byId["injected"];
+
+    const ready = connectors.find((c) => (c as any).ready);
+
+    // Preference order:
+    //  - If in Farcaster: last -> Coinbase -> Injected -> ready -> first
+    //  - Else (normal web): last -> Injected -> Coinbase -> ready -> first
+    if (insideFarcaster) return last || coinbase || injected || ready || connectors[0];
+    return last || injected || coinbase || ready || connectors[0];
+  }, [connectors, insideFarcaster]);
+
+  // Loosen readiness for injected (if window.ethereum exists)
   const hasWindowEth =
     typeof window !== "undefined" &&
     !!(window as any).ethereum &&
     !Array.isArray((window as any).ethereum);
 
   const canQuickConnect =
-    !address && (!!injected && ((injected as any).ready !== false || hasWindowEth));
+    !address &&
+    !!pickPreferred &&
+    // If preferred is injected, allow when either .ready !== false OR we detect window.ethereum
+    ((pickPreferred.id === "injected" &&
+      (((pickPreferred as any).ready !== false) || hasWindowEth)) ||
+      // Otherwise, if not injected, require not explicitly unready
+      (pickPreferred.id !== "injected" && (pickPreferred as any).ready !== false));
 
-  // Prevent repeated auto attempts per disconnection
+  // Prevent repeated auto attempts per disconnection (only applies to auto-reconnect logic below)
   const triedAutoReconnectRef = useRef(false);
 
-  // One-shot auto-reconnect with injected after a disconnect if that was the last connector
+  // One-shot auto-reconnect after a disconnect to the same last connector (non-intrusive)
   useEffect(() => {
     if (accountStatus !== "disconnected") {
       triedAutoReconnectRef.current = false;
@@ -48,24 +79,24 @@ export default function Nav() {
     }
     if (triedAutoReconnectRef.current) return;
 
-    const last = (typeof window !== "undefined"
-      ? localStorage.getItem(LAST_CONNECTOR_KEY)
-      : null) || "";
+    const lastId =
+      (typeof window !== "undefined" ? localStorage.getItem(LAST_CONNECTOR_KEY) : null) || "";
+    const last = connectors.find((c) => c.id === lastId);
 
-    if (last.toLowerCase() === "injected" && injected) {
+    if (last) {
       triedAutoReconnectRef.current = true;
       const t = setTimeout(async () => {
         try {
-          await connectAsync({ connector: injected });
+          await connectAsync({ connector: last });
         } catch {
           // ignore; user can click the button to open the modal
         }
       }, 200);
       return () => clearTimeout(t);
     }
-  }, [accountStatus, connectAsync, injected]);
+  }, [accountStatus, connectAsync, connectors]);
 
-  // Brand button (same look connected & disconnected)
+  // Brand button classes (your original look)
   const baseBtn =
     "inline-flex items-center gap-2 rounded-xl " +
     "bg-[#BBA46A] hover:bg-[#d6c289] " +
@@ -116,11 +147,13 @@ export default function Nav() {
                   authenticationStatus === "authenticated");
 
               const handleClick = async () => {
-                // Try injected first for one-click flows
-                if (!connected && canQuickConnect && injected) {
+                // Try programmatic connect with the preferred connector, then fall back to modal
+                if (!connected && canQuickConnect && pickPreferred) {
                   try {
-                    await connectAsync({ connector: injected });
-                    localStorage.setItem(LAST_CONNECTOR_KEY, "injected");
+                    await connectAsync({ connector: pickPreferred });
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem(LAST_CONNECTOR_KEY, pickPreferred.id);
+                    }
                     return;
                   } catch {
                     // fall through to modal
