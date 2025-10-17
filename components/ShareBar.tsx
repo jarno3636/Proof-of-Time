@@ -5,6 +5,7 @@ import {
   buildFarcasterComposeUrl,
   composeCast as composeCastMini,
   isFarcasterUA,
+  miniEntryUrl,
 } from "@/lib/miniapp";
 
 type Token = {
@@ -25,7 +26,6 @@ export default function ShareBar({
   tokens: Token[];
   selectedSymbols?: string[];
 }) {
-  // Dedup + filter by symbol
   const selected = useMemo(() => {
     if (!selectedSymbols.length) return [] as Token[];
     const wanted = new Set(selectedSymbols);
@@ -38,18 +38,14 @@ export default function ShareBar({
     });
   }, [tokens, selectedSymbols]);
 
-  const site = useMemo(
-    () =>
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : ""),
-    []
-  );
+  const site =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
 
-  // Stable URLs
-  const FC_EMBED = useMemo(() => `${site}/frames`, [site]);
-  const CTA_URL = useMemo(() => `${site}/`, [site]);
+  // Frame embed keeps it in-app; CTA points to your mini entry
+  const FC_EMBED = `${site}/frames`;
+  const CTA_URL = miniEntryUrl();
 
-  // ---------- Text builders ----------
   const titleLine = (list: Token[]) =>
     list.length === 1
       ? "⟡ Relic Revealed"
@@ -62,36 +58,31 @@ export default function ShareBar({
     return `• $${t.symbol} — ${t.days}d (${badge})`;
   };
 
-  // Farcaster ~320 chars is a safe envelope; X ~280 visible
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
+  const buildText = (list: Token[], cap?: number) =>
+    safeTrim(
+      [
+        titleLine(list),
+        ...list.map(lineFor),
+        "Time > hype. #ProofOfTime ⏳",
+        "Time to let those diamond hands shine 💎✊",
+      ].join("\n"),
+      cap
+    );
 
-  const buildText = (list: Token[], cap?: number) => {
-    const lines = [
-      titleLine(list),
-      ...list.map(lineFor),
-      "Time > hype. #ProofOfTime ⏳",
-      "Time to let those diamond hands shine 💎✊",
-    ];
-    const out = lines.join("\n");
-    return cap ? safeTrim(out, cap) : out;
-  };
-
-  // ---------- Farcaster ----------
+  // Farcaster
   const shareFC = useCallback(
     async (list: Token[]) => {
       const text = buildText(list, 320);
-      // 1) Try native mini-app compose (Warpcast / Base MiniKit bridge)
       const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
       if (ok) return;
 
-      // 2) Fallback to Warpcast web composer
       const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
       if (typeof window !== "undefined") {
-        if (isFarcasterUA()) {
-          window.location.href = url;
-        } else {
+        if (isFarcasterUA()) window.location.href = url;
+        else {
           const w = window.open(url, "_blank", "noopener,noreferrer");
-          if (!w) window.location.href = url; // popup blocked
+          if (!w) window.location.href = url;
         }
       }
     },
@@ -99,25 +90,18 @@ export default function ShareBar({
   );
 
   const shareAllFC = useCallback(() => { void shareFC(tokens); }, [tokens, shareFC]);
-  const shareSelectedFC = useCallback(() => {
-    if (!selected.length) return;
-    void shareFC(selected);
-  }, [selected, shareFC]);
+  const shareSelectedFC = useCallback(() => { if (selected.length) void shareFC(selected); }, [selected, shareFC]);
 
-  // ---------- X / Twitter ----------
+  // X / Twitter
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
-    if (url) params.set("url", url); // keep link so the card renders
+    if (url) params.set("url", url);
     const href = `${base}?${params.toString()}`;
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }
-
-  const shareAllX = useCallback(() => {
-    openXShare(buildText(tokens, 280), CTA_URL);
-  }, [tokens, CTA_URL]);
-
+  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), CTA_URL), [tokens, CTA_URL]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     openXShare(buildText(selected, 280), CTA_URL);
