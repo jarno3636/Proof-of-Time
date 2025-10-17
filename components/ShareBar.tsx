@@ -55,14 +55,9 @@ export default function ShareBar({
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
 
+  // ⬇️ NOTE: “See yours: …” line REMOVED
   const buildText = (list: Token[], cap?: number) => {
-    const lines = [
-      titleLine(list),
-      ...list.map(lineFor),
-      "",
-      `See yours: ${FARCASTER_MINIAPP_LINK}`,
-      "Time > hype. #ProofOfTime ⏳",
-    ];
+    const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
     const out = lines.join("\n");
     return cap ? safeTrim(out, cap) : out;
   };
@@ -88,7 +83,7 @@ export default function ShareBar({
     if (!ok) setMsg("Could not open composer.");
   }, [selected, site]);
 
-  // Optional X/Twitter (unchanged)
+  // Optional X/Twitter
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
