@@ -21,6 +21,25 @@ export const MINIAPP_URL =
   (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_FC_MINIAPP_URL) ||
   "";
 
+/** Absolute URL to your mini-app entry (prefer dedicated mini host if configured). */
+export function miniEntryUrl(): string {
+  const base = MINIAPP_URL || SITE_URL;
+  try {
+    return new URL("/mini", base).toString();
+  } catch {
+    return `${SITE_URL}/mini`;
+  }
+}
+
+/** Absolute URL to your Farcaster frame endpoint (used as an embed). */
+export function fcEmbedUrl(): string {
+  try {
+    return new URL("/frames", SITE_URL).toString();
+  } catch {
+    return `${SITE_URL}/frames`;
+  }
+}
+
 /* ---------------- UA heuristics ---------------- */
 
 export function isFarcasterUA(): boolean {
@@ -119,6 +138,19 @@ export async function ensureReady(timeoutMs = 1200): Promise<void> {
   } catch {
     // noop
   }
+}
+
+/** Soft wrapper that also pings legacy globals if present. Safe to call anywhere. */
+export async function signalMiniAppReady(): Promise<void> {
+  try {
+    await ensureReady(900);
+  } catch {}
+  try {
+    (window as any)?.farcaster?.actions?.ready?.();
+  } catch {}
+  try {
+    (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.();
+  } catch {}
 }
 
 /* ===================== Base App (MiniKit globals) ===================== */
