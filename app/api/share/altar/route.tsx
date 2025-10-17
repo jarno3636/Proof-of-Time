@@ -1,5 +1,6 @@
 // app/api/share/altar/route.tsx
-import { ImageResponse, NextRequest } from "next/server";
+import { ImageResponse } from "next/og";            // ✅ use next/og for ImageResponse
+import type { NextRequest } from "next/server";     // ✅ type-only import for NextRequest
 
 export const runtime = "edge";
 
