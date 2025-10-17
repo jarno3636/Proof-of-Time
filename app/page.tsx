@@ -1,7 +1,7 @@
-// app/page.tsx
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
+import HomeShareBar from "@/components/HomeShareBar"; // ← NEW
 
 const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
@@ -37,7 +37,6 @@ export const metadata: Metadata = {
     description: "Your longest-held tokens on Base. Time > hype.",
     images: [`${site}/og.png`],
   },
-  // Farcaster Frame vNext tags
   other: {
     "fc:frame": "vNext",
     "fc:frame:image": `${site}/og.png`,
@@ -61,6 +60,9 @@ export default function Home() {
           Proof of Time reveals your longest-held tokens on Base — turning
           consistent holders into living records of patience, loyalty, and belief.
         </p>
+
+        {/* 🔥 New: share the app CTA */}
+        <HomeShareBar />
       </section>
 
       <section className="mx-auto max-w-6xl px-6 pb-16">
