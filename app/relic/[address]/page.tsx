@@ -1,7 +1,9 @@
+// app/relic/[address]/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
+import Nav from "@/components/Nav";              // ← add this
 import RelicAltar from "@/components/RelicAltar";
 import ShareBar from "@/components/ShareBar";
 
@@ -29,7 +31,7 @@ export default function Page({ params }: { params: { address: string } }) {
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]); // symbols selected
+  const [selected, setSelected] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,7 +39,6 @@ export default function Page({ params }: { params: { address: string } }) {
     try {
       const j = await getRelics(targetAddr);
       setTokens(j.tokens || []);
-      // keep selection valid
       setSelected((prev) =>
         prev.filter((sym) => (j.tokens || []).some((t) => t.symbol === sym))
       );
@@ -63,7 +64,6 @@ export default function Page({ params }: { params: { address: string } }) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || "Compute failed");
-      // compute complete → refresh altar
       await load();
     } catch (e: any) {
       setError(e?.message || "Compute error");
@@ -84,101 +84,102 @@ export default function Page({ params }: { params: { address: string } }) {
     connected.toLowerCase() === targetAddr.toLowerCase();
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
-      {/* Header: title + CTA block with clean alignment */}
-      <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-            Your Relic Altar
-          </h1>
-          <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
-        </div>
+    <>
+      {/* Site nav (brand link takes you home) */}
+      <Nav />
 
-        <div className="justify-self-start md:justify-self-end text-right">
-          <button
-            onClick={onCompute}
-            className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-3 text-sm sm:text-base text-[#0b0e14] shadow-lg transition"
-            disabled={computing}
-            title={
-              isOwnerView
-                ? "Recalculate from chain & DB"
-                : "Recalculate (anyone can trigger)"
-            }
-          >
-            {computing ? "Verifying…" : "Verify your will to hold"}
-          </button>
-          {/* tiny informational note (not a link) */}
-          <div className="mt-1 text-[11px] italic text-zinc-400">
-            * Refreshes altar once complete
+      <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
+        {/* Header: title + CTA */}
+        <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+              Your Relic Altar
+            </h1>
+            <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
           </div>
-        </div>
-      </header>
 
-      {/* Computing banner */}
-      {computing && (
-        <div className="mt-4 rounded-xl border border-[#BBA46A]/30 bg-[#BBA46A]/10 px-4 py-3 text-sm text-[#EDEEF2] flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A] animate-pulse" />
-          Verifying your will to hold…
-        </div>
-      )}
+          <div className="justify-self-start md:justify-self-end text-right">
+            <button
+              onClick={onCompute}
+              className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-3 text-sm sm:text-base text-[#0b0e14] shadow-lg transition"
+              disabled={computing}
+              title={
+                isOwnerView
+                  ? "Recalculate from chain & DB"
+                  : "Recalculate (anyone can trigger)"
+              }
+            >
+              {computing ? "Verifying…" : "Verify your will to hold"}
+            </button>
+            <div className="mt-1 text-[11px] italic text-zinc-400">
+              * Refreshes altar once complete
+            </div>
+          </div>
+        </header>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </div>
-      )}
+        {computing && (
+          <div className="mt-4 rounded-xl border border-[#BBA46A]/30 bg-[#BBA46A]/10 px-4 py-3 text-sm text-[#EDEEF2] flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A] animate-pulse" />
+            Verifying your will to hold…
+          </div>
+        )}
 
-      {/* States */}
-      {loading ? (
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      ) : tokens.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <p className="opacity-80">
-            No relics yet. Tap{" "}
-            <span className="font-semibold">“Verify your will to hold”</span>{" "}
-            to compute. It will refresh your altar automatically.
-          </p>
-          <p className="opacity-60 text-sm mt-2">
-            Note: LP positions and some programmatic movements can complicate
-            “time held”.
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="mt-6">
-            <RelicAltar
-              items={tokens.map((t) => ({
-                token_address: t.token_address,
-                symbol: t.symbol,
-                days: t.days,
-                no_sell_streak_days: t.no_sell_streak_days,
-                never_sold: t.never_sold,
-                tier: t.tier,
-              }))}
-              selectable
-              selected={selected}
-              onToggle={toggleSelect}
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        ) : tokens.length === 0 ? (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+            <p className="opacity-80">
+              No relics yet. Tap{" "}
+              <span className="font-semibold">“Verify your will to hold”</span>{" "}
+              to compute. It will refresh your altar automatically.
+            </p>
+            <p className="opacity-60 text-sm mt-2">
+              Note: LP positions and some programmatic movements can complicate
+              “time held”.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-6">
+              <RelicAltar
+                items={tokens.map((t) => ({
+                  token_address: t.token_address,
+                  symbol: t.symbol,
+                  days: t.days,
+                  no_sell_streak_days: t.no_sell_streak_days,
+                  never_sold: t.never_sold,
+                  tier: t.tier,
+                }))}
+                selectable
+                selected={selected}
+                onToggle={toggleSelect}
+              />
+            </div>
+
+            <ShareBar
+              address={targetAddr}
+              tokens={tokens}
+              selectedSymbols={selected}
             />
-          </div>
 
-          <ShareBar
-            address={targetAddr}
-            tokens={tokens}
-            selectedSymbols={selected}
-          />
-
-          <p className="opacity-60 text-xs mt-6">
-            Heads up: LP activity and wrapping/unwrapping patterns may affect
-            continuous hold time.
-          </p>
-        </>
-      )}
-    </main>
+            <p className="opacity-60 text-xs mt-6">
+              Heads up: LP activity and wrapping/unwrapping patterns may affect
+              continuous hold time.
+            </p>
+          </>
+        )}
+      </main>
+    </>
   );
 }
 
