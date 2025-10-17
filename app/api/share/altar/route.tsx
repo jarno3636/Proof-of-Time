@@ -2,9 +2,9 @@
 import { ImageResponse, NextRequest } from "next/server";
 
 export const runtime = "edge";
-export const contentType = "image/png";
-export const alt = "Proof of Time — Altar";
-export const size = { width: 1200, height: 630 };
+
+const IMG_WIDTH = 1200;
+const IMG_HEIGHT = 630;
 
 // Helper: shorten address
 function short(addr: string) {
@@ -33,7 +33,7 @@ type ApiToken = {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const origin = getOrigin(req as any);
+  const origin = getOrigin(req);
 
   const address = (searchParams.get("address") || "").toLowerCase();
   const symbolsParam = (searchParams.get("symbols") || "").trim();
@@ -44,24 +44,28 @@ export async function GET(req: NextRequest) {
       .filter(Boolean)
   );
 
+  // Blank slate if address invalid
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return new ImageResponse(
-      <div
-        style={{
-          width: size.width,
-          height: size.height,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#0b0e14",
-          color: "#EDEEF2",
-          fontSize: 44,
-          fontWeight: 700,
-        }}
-      >
-        Proof of Time
-      </div>,
-      { ...size }
+      (
+        <div
+          style={{
+            width: IMG_WIDTH,
+            height: IMG_HEIGHT,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#0b0e14",
+            color: "#EDEEF2",
+            fontSize: 44,
+            fontWeight: 700,
+            fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial",
+          }}
+        >
+          Proof of Time
+        </div>
+      ),
+      { width: IMG_WIDTH, height: IMG_HEIGHT }
     );
   }
 
@@ -88,8 +92,8 @@ export async function GET(req: NextRequest) {
     (
       <div
         style={{
-          width: size.width,
-          height: size.height,
+          width: IMG_WIDTH,
+          height: IMG_HEIGHT,
           display: "flex",
           padding: 48,
           background: bg,
@@ -167,7 +171,6 @@ export async function GET(req: NextRequest) {
                     overflow: "hidden",
                   }}
                 >
-                  {/* Light sheen */}
                   <div
                     style={{
                       position: "absolute",
@@ -223,6 +226,6 @@ export async function GET(req: NextRequest) {
         </div>
       </div>
     ),
-    { ...size }
+    { width: IMG_WIDTH, height: IMG_HEIGHT }
   );
 }
