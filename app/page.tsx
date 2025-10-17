@@ -1,7 +1,52 @@
+// app/page.tsx
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
+import type { Metadata } from "next";
 
 const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
+
+/* ---------- Stable absolute site URL (server-safe) ---------- */
+function getSiteUrl() {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (env) return env; // e.g. https://proof-of-time.xyz
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel}`;
+  return "http://localhost:3000";
+}
+const site = getSiteUrl();
+
+/**
+ * This makes `/` itself a Frame:
+ * - Warpcast will fetch `/` and see these meta tags
+ * - Button 1 opens the app (link)
+ * - POST URL points to /api/frame so you can add interactive steps later
+ */
+export const metadata: Metadata = {
+  title: "Proof of Time",
+  description: "Your longest-held tokens on Base. Time > hype.",
+  openGraph: {
+    title: "Proof of Time",
+    description: "Your longest-held tokens on Base. Time > hype.",
+    url: site,
+    siteName: "Proof of Time",
+    images: [{ url: `${site}/og.png`, width: 1200, height: 630, alt: "Proof of Time" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Proof of Time",
+    description: "Your longest-held tokens on Base. Time > hype.",
+    images: [`${site}/og.png`],
+  },
+  // Farcaster Frame vNext tags
+  other: {
+    "fc:frame": "vNext",
+    "fc:frame:image": `${site}/og.png`,
+    "fc:frame:post_url": `${site}/api/frame`,
+    "fc:frame:button:1": "Enter Your Altar",
+    "fc:frame:button:1:action": "link",
+    "fc:frame:button:1:target": `${site}/`,
+  },
+};
 
 export default function Home() {
   return (
