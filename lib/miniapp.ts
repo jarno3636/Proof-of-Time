@@ -246,9 +246,8 @@ export async function composeCast({
     try {
       await ensureReady();
       await frame.actions.composeCast({ text, embeds: normEmbeds });
+      return true;
     } catch {}
-    else {}
-    if (frame?.actions?.composeCast) return true;
   }
 
   // Mini App SDK (official mini runtime)
@@ -263,7 +262,6 @@ export async function composeCast({
 
   return false;
 }
-
 /**
  * Compose everywhere:
  * - Try SDKs (Base MiniKit → Frame SDK → Mini App SDK)
