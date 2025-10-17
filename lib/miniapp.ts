@@ -21,6 +21,11 @@ export const MINIAPP_URL =
   (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_FC_MINIAPP_URL) ||
   "";
 
+/** Public Farcaster Mini App deeplink (your live mini app page). */
+export const FARCASTER_MINIAPP_LINK =
+  (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_FC_MINIAPP_LINK) ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
 /** Absolute URL to your mini-app entry (prefer dedicated mini host if configured). */
 export function miniEntryUrl(): string {
   const base = MINIAPP_URL || SITE_URL;
@@ -31,8 +36,11 @@ export function miniEntryUrl(): string {
   }
 }
 
-/** Absolute URL to your Farcaster frame endpoint (used as an embed). */
+/** Absolute URL to your Farcaster frame endpoint (used as an embed).
+ *  Prefers the real Farcaster Mini App link if provided so posts stay in-app.
+ */
 export function fcEmbedUrl(): string {
+  if (FARCASTER_MINIAPP_LINK) return FARCASTER_MINIAPP_LINK;
   try {
     return new URL("/frames", SITE_URL).toString();
   } catch {
