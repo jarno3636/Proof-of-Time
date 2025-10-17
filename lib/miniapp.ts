@@ -63,7 +63,7 @@ export function isBaseAppUA(): boolean {
   );
 }
 
-/** Simple mobile UA check (helps choose fallback navigation) */
+/** Simple mobile UA check (good enough for deciding to try native deep link) */
 export function isMobileUA(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
@@ -104,6 +104,24 @@ export function buildFarcasterComposeUrl({
   embeds?: string[];
 } = {}): string {
   const url = new URL("https://warpcast.com/~/compose");
+  if (text) url.searchParams.set("text", text);
+  for (const e of embeds || []) {
+    const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
+    if (abs) url.searchParams.append("embeds[]", abs);
+  }
+  return url.toString();
+}
+
+/** Build a Farcaster deep link that opens the native app composer */
+export function buildFarcasterDeepLink({
+  text = "",
+  embeds = [] as string[],
+}: {
+  text?: string;
+  embeds?: string[];
+} = {}): string {
+  // farcaster://casts/compose?text=...&embeds[]=...
+  const url = new URL("farcaster://casts/compose");
   if (text) url.searchParams.set("text", text);
   for (const e of embeds || []) {
     const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
@@ -196,7 +214,7 @@ async function tryBaseComposeCast(args: { text?: string; embeds?: string[] }) {
  */
 export async function openInMini(url: string): Promise<boolean> {
   if (!url) return false;
-  const safe = toAbsoluteUrl(url, SITE_URL);
+  const safe = new URL(url, SITE_URL).toString();
 
   // 1) Base App MiniKit
   try {
@@ -218,9 +236,9 @@ export async function openInMini(url: string): Promise<boolean> {
     const sdk = await getMiniSdk();
     if (sdk?.actions?.openUrl) {
       try {
-        await (sdk.actions.openUrl as any)(safe); // newer builds: string
+        await (sdk.actions.openUrl as any)(safe); // string
       } catch {
-        await (sdk.actions.openUrl as any)({ url: safe }); // some expect object
+        await (sdk.actions.openUrl as any)({ url: safe }); // object
       }
       return true;
     }
@@ -246,7 +264,13 @@ export async function composeCast({
   text = "",
   embeds = [] as string[],
 } = {}): Promise<boolean> {
-  const normalizedEmbeds = (embeds || []).map((e) => toAbsoluteUrl(e, SITE_URL));
+  const normalizedEmbeds = (embeds || []).map((e) => {
+    try {
+      return new URL(e, SITE_URL).toString();
+    } catch {
+      return SITE_URL;
+    }
+  });
 
   // 1) Base MiniKit
   if (await tryBaseComposeCast({ text, embeds: normalizedEmbeds })) return true;
