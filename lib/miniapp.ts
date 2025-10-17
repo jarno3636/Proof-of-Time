@@ -1,5 +1,3 @@
-// lib/miniapp.ts
-
 /** Minimal types for the SDKs (tolerant to older builds) */
 type MiniAppSdk = {
   actions?: {
@@ -72,7 +70,7 @@ async function getGlobalSdk(): Promise<MiniAppSdk | null> {
   const g = window as any;
   return (
     g?.farcaster?.miniapp?.sdk ||
-    g?.farcaster?.actions || // some older builds expose actions directly
+    g?.farcaster?.actions ||
     g?.sdk ||
     null
   );
@@ -119,7 +117,7 @@ export async function ensureReady(timeoutMs = 1200): Promise<void> {
   }
 }
 
-/** Legacy-friendly wrapper (your FarcasterMiniBridge imports this). */
+/** Legacy-friendly wrapper (for FarcasterMiniBridge). */
 export async function signalMiniAppReady(): Promise<void> {
   try {
     await ensureReady(900);
@@ -262,6 +260,7 @@ export async function composeCast({
 
   return false;
 }
+
 /**
  * Compose everywhere:
  * - Try SDKs (Base MiniKit → Frame SDK → Mini App SDK)
