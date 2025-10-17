@@ -1,33 +1,42 @@
 // components/ShareToFarcasterButton.tsx
 "use client";
 
-import { useCallback } from "react";
-import { composeInWarpcast, buildWarpcastWebCompose } from "@/lib/miniapp";
+import * as React from "react";
+import { composeCastEverywhere } from "@/lib/miniapp";
+
+type Props = {
+  text: string;
+  embeds?: string[];
+  className?: string;
+  disabled?: boolean;
+  title?: string;
+  children?: React.ReactNode;
+  onDone?: (via: "sdk" | "web") => void; // optional: know which path was used
+};
 
 export default function ShareToFarcasterButton({
   text,
   embeds = [],
+  className,
+  disabled,
+  title,
   children = "Share on Farcaster",
-}: {
-  text: string;
-  embeds?: string[];
-  children?: React.ReactNode;
-}) {
-  const onClick = useCallback(async () => {
-    // 1) Try native mini-app composer (only works inside Warpcast)
-    const handled = await composeInWarpcast(text, embeds);
-    if (handled) return;
-
-    // 2) Fallback: open Warpcast web composer (works on desktop/web)
-    const url = buildWarpcastWebCompose(text, embeds);
-    const w = window.open(url, "_blank", "noopener,noreferrer");
-    if (!w) window.location.href = url; // popup blocked
-  }, [text, embeds]);
+  onDone,
+}: Props) {
+  const onClick = React.useCallback(async () => {
+    const via = await composeCastEverywhere({ text, embeds });
+    onDone?.(via);
+  }, [text, embeds, onDone]);
 
   return (
     <button
       onClick={onClick}
-      className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
+      disabled={disabled}
+      title={title}
+      className={
+        className ??
+        "rounded-2xl bg-[#BBA46A] text-[#0b0e14] px-4 py-3 font-semibold hover:bg-[#d6c289] transition disabled:opacity-60 disabled:cursor-not-allowed"
+      }
     >
       {children}
     </button>
