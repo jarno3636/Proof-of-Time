@@ -59,16 +59,27 @@ export function buildFarcasterComposeUrl({ text = "", embeds = [] as string[] } 
 /* ---------------- SDK loaders ---------------- */
 export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   if (typeof window === "undefined") return null;
+
+  // 1) Try global injection first (fast path in many builds)
+  const g = window as any;
+  const globalSdk: MiniAppSdk | null =
+    g?.farcaster?.miniapp?.sdk || g?.sdk || null;
+  if (globalSdk) return globalSdk;
+
+  // 2) Try a truly dynamic import at runtime WITHOUT bundler resolution.
+  //    Using Function('return import(...)') avoids webpack/vite resolving it at build time.
   try {
-    const mod = (await import("@farcaster/miniapp-sdk")) as { sdk?: MiniAppSdk; default?: MiniAppSdk };
-    const fromModule = mod?.sdk ?? mod?.default;
+    const spec = "@farcaster/miniapp-sdk";
+    const importer = (Function("m", "return import(m)")) as (m: string) => Promise<any>;
+    const mod = await importer(spec).catch(() => null);
+    const fromModule: MiniAppSdk | undefined = mod?.sdk ?? mod?.default;
     if (fromModule) return fromModule;
-    const g = window as any;
-    return g?.farcaster?.miniapp?.sdk || g?.sdk || null;
   } catch {
-    const g = window as any;
-    return g?.farcaster?.miniapp?.sdk || g?.sdk || null;
+    // ignore
   }
+
+  // 3) Fallback to any late-populated globals
+  return (g?.farcaster?.miniapp?.sdk || g?.sdk || null) as MiniAppSdk | null;
 }
 
 /** Call sdk.actions.ready() quickly so we never hang splash */
@@ -108,7 +119,11 @@ export async function openInMini(url: string): Promise<boolean> {
   } catch {}
   try {
     const sdk = await getMiniSdk();
-    if (sdk?.actions?.openUrl) { try { await (sdk.actions.openUrl as any)(safe); } catch { await (sdk.actions.openUrl as any)({ url: safe }); } return true; }
+    if (sdk?.actions?.openUrl) {
+      try { await (sdk.actions.openUrl as any)(safe); }
+      catch { await (sdk.actions.openUrl as any)({ url: safe }); }
+      return true;
+    }
     if (sdk?.actions?.openURL) { await sdk.actions.openURL(safe); return true; }
   } catch {}
   return false;
