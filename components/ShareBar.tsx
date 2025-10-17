@@ -4,9 +4,11 @@
 import { useCallback, useMemo } from "react";
 import {
   buildFarcasterComposeUrl,
+  buildFarcasterDeepLink,   // ⬅️ NEW
   composeCast as composeCastMini,
   isFarcasterUA,
-  FARCASTER_MINIAPP_LINK,     // ⬅️ import the in-app Farcaster URL
+  isMobileUA,               // ⬅️ NEW
+  FARCASTER_MINIAPP_LINK,
 } from "@/lib/miniapp";
 
 type Token = {
@@ -35,16 +37,20 @@ export default function ShareBar({
     [tokens, selectedSymbols]
   );
 
-  // 🔒 Always embed the Farcaster directory URL so it opens in-app
+  // Always embed your Farcaster directory link so posts resolve in-app
   const FC_EMBED = FARCASTER_MINIAPP_LINK;
 
-  // X / Twitter still points to your homepage for the card
+  // X / Twitter CTA stays your homepage
   const CTA_URL =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
   const titleLine = (list: Token[]) =>
-    list.length === 1 ? "⟡ Relic Revealed" : list.length <= 3 ? "⟡ Relics Revealed" : "⟡ Proof of Time — Altar";
+    list.length === 1
+      ? "⟡ Relic Revealed"
+      : list.length <= 3
+      ? "⟡ Relics Revealed"
+      : "⟡ Proof of Time — Altar";
 
   const lineFor = (t: Token) => {
     const sym = `$${t.symbol}`;
@@ -62,23 +68,39 @@ export default function ShareBar({
     ].join("\n");
 
   // -------- Farcaster ----------
-  const shareFC = useCallback(async (text: string) => {
-    // 1) Try native mini-app compose
-    const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
-    if (ok) return;
+  const shareFC = useCallback(
+    async (text: string) => {
+      // 1) Try native mini-app compose (inside Warpcast / Base app bridge)
+      const ok = await composeCastMini({ text, embeds: [FC_EMBED] });
+      if (ok) return;
 
-    // 2) Fallback to Warpcast web composer (still in-app because embed is farcaster.xyz)
-    const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
-    if (typeof window !== "undefined") {
+      // 2) If we're INSIDE Warpcast, go to the web composer (stays in-app)
       if (isFarcasterUA()) {
+        const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
         window.location.href = url;
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
+        return;
       }
-    }
-  }, [FC_EMBED]);
 
-  const shareAllFC = useCallback(() => { void shareFC(buildText(tokens)); }, [tokens, shareFC]);
+      // 3) If we're on MOBILE (CB browser, Safari, Chrome, app webviews):
+      //    use the native deep link to open Farcaster app composer directly.
+      if (isMobileUA()) {
+        const deep = buildFarcasterDeepLink({ text, embeds: [FC_EMBED] });
+        window.location.href = deep; // avoids “download Warpcast” interstitials
+        return;
+      }
+
+      // 4) Desktop web fallback: open Warpcast web composer in a new tab
+      const url = buildFarcasterComposeUrl({ text, embeds: [FC_EMBED] });
+      const w = window.open(url, "_blank", "noopener,noreferrer");
+      if (!w) window.location.href = url; // popup blocked
+    },
+    [FC_EMBED]
+  );
+
+  const shareAllFC = useCallback(() => {
+    void shareFC(buildText(tokens));
+  }, [tokens, shareFC]);
+
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     void shareFC(buildText(selected));
@@ -88,8 +110,10 @@ export default function ShareBar({
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
-    if (url) params.set("url", url); // keep link so the card renders
-    window.open(`${base}?${params.toString()}`, "_blank", "noopener,noreferrer");
+    if (url) params.set("url", url);
+    const href = `${base}?${params.toString()}`;
+    const w = window.open(href, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = href;
   }
 
   const shareAllX = useCallback(() => openXShare(buildText(tokens), CTA_URL), [tokens, CTA_URL]);
