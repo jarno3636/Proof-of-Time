@@ -36,16 +36,16 @@ export default function ShareBar({
     });
   }, [tokens, selectedSymbols]);
 
-  // Absolute site origin for image URLs
   const site =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  // ----- IMG URLs (ALL vs SELECTED) -----
+  // ----- PNG embed URLs (ALL vs SELECTED) -----
   const imgAllUrl = useMemo(() => {
     const u = new URL(`/api/share/altar`, site);
     u.searchParams.set("address", address);
-    u.searchParams.set("_", String(Date.now())); // cache-bust
+    // cache-bust so users see up-to-date card while testing
+    u.searchParams.set("_", String(Date.now()));
     return u.toString();
   }, [site, address]);
 
@@ -55,11 +55,10 @@ export default function ShareBar({
     if (selected.length) {
       u.searchParams.set("symbols", selected.map((t) => t.symbol).join(","));
     }
-    u.searchParams.set("_", String(Date.now())); // cache-bust
+    u.searchParams.set("_", String(Date.now()));
     return u.toString();
   }, [site, address, selected]);
 
-  // X / Twitter card target
   const ctaUrl = useMemo(() => site + "/", [site]);
 
   const titleLine = (list: Token[]) =>
@@ -88,27 +87,18 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  // —— Farcaster: ALWAYS use Warpcast web composer with our image embed ——
+  // —— Farcaster: ALWAYS use Warpcast web composer in a new tab ——
   const openWarpcastComposer = useCallback((text: string, embedUrl: string) => {
     const url = buildFarcasterComposeUrl({ text, embeds: [embedUrl] });
-    if (typeof window !== "undefined") {
-      const inWarpcast = /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
-      if (inWarpcast) {
-        // inside the Warpcast webview: navigate in-place
-        window.location.href = url;
-      } else {
-        // web/dapp: open in a new tab (fallback to same-tab if popup blocked)
-        const w = window.open(url, "_blank", "noopener,noreferrer");
-        if (!w) window.location.href = url;
-      }
-    }
+    // Always new tab to avoid mobile deep-link intercepts that trigger “download app”
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = url; // popup blocked: same-tab fallback
   }, []);
 
   const shareAllFC = useCallback(
     () => openWarpcastComposer(buildText(tokens, 320), imgAllUrl),
     [tokens, imgAllUrl, openWarpcastComposer]
   );
-
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     openWarpcastComposer(buildText(selected, 320), imgSelectedUrl);
