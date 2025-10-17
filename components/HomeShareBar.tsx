@@ -31,6 +31,7 @@ export default function HomeShareBar() {
         "How patient are your bags? Uncover your longest-held tokens on Base. 💎",
         "Turn diamond hands into data. Reveal your relics on Base. 💠",
         "Your altar awaits—see which tokens you’ve held the longest. 🕯️",
+        "Find out just how diamond 💎 your hads really are!✊",
         "Proof of Time: because holding > hoping. Show me your relics. 🛡️",
         "Who’s the real OG? Reveal your top 3 longest-held tokens. 🧭",
       ] as const,
