@@ -63,7 +63,7 @@ export function isBaseAppUA(): boolean {
   );
 }
 
-/** Simple mobile UA check (good enough for deciding to try native deep link) */
+/** Simple mobile UA check (helps choose fallback navigation) */
 export function isMobileUA(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
@@ -104,24 +104,6 @@ export function buildFarcasterComposeUrl({
   embeds?: string[];
 } = {}): string {
   const url = new URL("https://warpcast.com/~/compose");
-  if (text) url.searchParams.set("text", text);
-  for (const e of embeds || []) {
-    const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
-    if (abs) url.searchParams.append("embeds[]", abs);
-  }
-  return url.toString();
-}
-
-/** Build a Farcaster deep link that opens the native app composer */
-export function buildFarcasterDeepLink({
-  text = "",
-  embeds = [] as string[],
-}: {
-  text?: string;
-  embeds?: string[];
-} = {}): string {
-  // farcaster://casts/compose?text=...&embeds[]=...
-  const url = new URL("farcaster://casts/compose");
   if (text) url.searchParams.set("text", text);
   for (const e of embeds || []) {
     const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
@@ -236,11 +218,9 @@ export async function openInMini(url: string): Promise<boolean> {
     const sdk = await getMiniSdk();
     if (sdk?.actions?.openUrl) {
       try {
-        // Newer builds: openUrl(string)
-        await (sdk.actions.openUrl as any)(safe);
+        await (sdk.actions.openUrl as any)(safe); // newer builds: string
       } catch {
-        // Some builds expect an object
-        await (sdk.actions.openUrl as any)({ url: safe });
+        await (sdk.actions.openUrl as any)({ url: safe }); // some expect object
       }
       return true;
     }
