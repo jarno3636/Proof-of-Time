@@ -35,7 +35,8 @@ export default function Nav() {
       connectors.map((c) => [c.id, c])
     );
 
-    const lastId = (typeof window !== "undefined" && localStorage.getItem(LAST_CONNECTOR_KEY)) || "";
+    const lastId =
+      (typeof window !== "undefined" && localStorage.getItem(LAST_CONNECTOR_KEY)) || "";
     const last = lastId && byId[lastId] ? byId[lastId] : null;
 
     const coinbase =
@@ -53,7 +54,7 @@ export default function Nav() {
     return last || injected || coinbase || ready || connectors[0];
   }, [connectors, insideFarcaster]);
 
-  // Loosen readiness for injected (if window.ethereum exists)
+  // Loosen readiness for injected (if window.ethereum exists) — only used on CLICK
   const hasWindowEth =
     typeof window !== "undefined" &&
     !!(window as any).ethereum &&
@@ -62,17 +63,18 @@ export default function Nav() {
   const canQuickConnect =
     !address &&
     !!pickPreferred &&
-    // If preferred is injected, allow when either .ready !== false OR we detect window.ethereum
     ((pickPreferred.id === "injected" &&
       (((pickPreferred as any).ready !== false) || hasWindowEth)) ||
-      // Otherwise, if not injected, require not explicitly unready
       (pickPreferred.id !== "injected" && (pickPreferred as any).ready !== false));
 
-  // Prevent repeated auto attempts per disconnection (only applies to auto-reconnect logic below)
+  // Prevent repeated auto attempts per disconnection
   const triedAutoReconnectRef = useRef(false);
 
   // One-shot auto-reconnect after a disconnect to the same last connector (non-intrusive)
+  // ⛔️ BUT never do this inside Farcaster to avoid popup-blocked toasts.
   useEffect(() => {
+    if (insideFarcaster) return; // <- key change: disable background reconnect in mini-app
+
     if (accountStatus !== "disconnected") {
       triedAutoReconnectRef.current = false;
       return;
@@ -94,7 +96,7 @@ export default function Nav() {
       }, 200);
       return () => clearTimeout(t);
     }
-  }, [accountStatus, connectAsync, connectors]);
+  }, [accountStatus, connectAsync, connectors, insideFarcaster]);
 
   // Brand button classes (your original look)
   const baseBtn =
