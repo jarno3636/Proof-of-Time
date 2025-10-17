@@ -11,7 +11,7 @@ function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-const LAST_CONNECTOR_KEY = "pot_last_connector"; // stores connector.id
+const LAST_CONNECTOR_KEY = "pot_last_connector";
 
 export default function Nav() {
   const { address, status: accountStatus, isConnecting, connector } = useAccount();
@@ -20,7 +20,7 @@ export default function Nav() {
 
   const insideFarcaster = useMemo(isFarcasterUA, []);
 
-  // Persist last-used connector id on connect (covers modal & programmatic)
+  // remember last connector (unchanged)
   useEffect(() => {
     if (!address || !connector) return;
     try {
@@ -29,103 +29,50 @@ export default function Nav() {
     } catch {}
   }, [address, connector]);
 
-  // Helper: choose the best connector for this environment
-  const pickPreferred = useMemo(() => {
-    const byId: Record<string, (typeof connectors)[number]> = Object.fromEntries(
-      connectors.map((c) => [c.id, c])
-    );
+  // find common connectors (unchanged)
+  const byId: Record<string, (typeof connectors)[number]> = useMemo(
+    () => Object.fromEntries(connectors.map((c) => [c.id, c])),
+    [connectors]
+  );
+  const injected =
+    connectors.find((c) => /injected/i.test(c.name)) || byId["injected"];
+  const coinbaseSDK =
+    connectors.find((c) => /coinbase/i.test(c.name)) || byId["coinbaseWalletSDK"];
 
-    const lastId =
-      (typeof window !== "undefined" && localStorage.getItem(LAST_CONNECTOR_KEY)) || "";
-    const last = lastId && byId[lastId] ? byId[lastId] : null;
-
-    const coinbase =
-      connectors.find((c) => /coinbase/i.test(c.name)) || byId["coinbaseWalletSDK"];
-
-    const injected =
-      connectors.find((c) => /injected/i.test(c.name)) || byId["injected"];
-
-    const ready = connectors.find((c) => (c as any).ready);
-
-    // Preference order:
-    //  - If in Farcaster: last -> Coinbase -> Injected -> ready -> first
-    //  - Else (normal web): last -> Injected -> Coinbase -> ready -> first
-    if (insideFarcaster) return last || coinbase || injected || ready || connectors[0];
-    return last || injected || coinbase || ready || connectors[0];
-  }, [connectors, insideFarcaster]);
-
-  // Loosen readiness for injected (if window.ethereum exists) — only used on CLICK
-  const hasWindowEth =
-    typeof window !== "undefined" &&
-    !!(window as any).ethereum &&
-    !Array.isArray((window as any).ethereum);
-
-  const canQuickConnect =
-    !address &&
-    !!pickPreferred &&
-    ((pickPreferred.id === "injected" &&
-      (((pickPreferred as any).ready !== false) || hasWindowEth)) ||
-      (pickPreferred.id !== "injected" && (pickPreferred as any).ready !== false));
-
-  // Prevent repeated auto attempts per disconnection
+  // (kept) gentle auto-reconnect after disconnect — but NOT inside Farcaster
   const triedAutoReconnectRef = useRef(false);
-
-  // One-shot auto-reconnect after a disconnect to the same last connector (non-intrusive)
-  // ⛔️ BUT never do this inside Farcaster to avoid popup-blocked toasts.
   useEffect(() => {
-    if (insideFarcaster) return; // <- key change: disable background reconnect in mini-app
-
+    if (insideFarcaster) return; // avoid popup-block in mini-app
     if (accountStatus !== "disconnected") {
       triedAutoReconnectRef.current = false;
       return;
     }
     if (triedAutoReconnectRef.current) return;
-
     const lastId =
       (typeof window !== "undefined" ? localStorage.getItem(LAST_CONNECTOR_KEY) : null) || "";
-    const last = connectors.find((c) => c.id === lastId);
-
+    const last = byId[lastId];
     if (last) {
       triedAutoReconnectRef.current = true;
-      const t = setTimeout(async () => {
-        try {
-          await connectAsync({ connector: last });
-        } catch {
-          // ignore; user can click the button to open the modal
-        }
+      const t = setTimeout(() => {
+        connectAsync({ connector: last }).catch(() => {});
       }, 200);
       return () => clearTimeout(t);
     }
-  }, [accountStatus, connectAsync, connectors, insideFarcaster]);
+  }, [accountStatus, byId, connectAsync, insideFarcaster]);
 
-  // Brand button classes (your original look)
   const baseBtn =
-    "inline-flex items-center gap-2 rounded-xl " +
-    "bg-[#BBA46A] hover:bg-[#d6c289] " +
-    "px-5 py-3 text-sm font-semibold " +
-    "text-[#0b0e14] transition " +
-    "disabled:opacity-60 disabled:cursor-not-allowed " +
-    "focus:outline-none focus:ring-2 focus:ring-[#BBA46A]/40 " +
-    "[appearance:none]";
+    "inline-flex items-center gap-2 rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-5 py-3 text-sm font-semibold text-[#0b0e14] transition disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#BBA46A]/40 [appearance:none]";
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-black/20 bg-black/5 border-b border-white/10">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-        {/* Brand / Title */}
-        <Link
-          href="/"
-          className="text-xl font-semibold tracking-wide hover:text-[#d6c289] transition"
-        >
+        <Link href="/" className="text-xl font-semibold tracking-wide hover:text-[#d6c289] transition">
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
-        {/* Right controls */}
         <div className="ml-auto flex items-center gap-3">
           {address && (
-            <Link
-              href={`/relic/${address}`}
-              className="text-sm text-zinc-300 hover:text-white"
-            >
+            <Link href={`/relic/${address}`} className="text-sm text-zinc-300 hover:text-white">
               Your Altar
             </Link>
           )}
@@ -149,18 +96,22 @@ export default function Nav() {
                   authenticationStatus === "authenticated");
 
               const handleClick = async () => {
-                // Try programmatic connect with the preferred connector, then fall back to modal
-                if (!connected && canQuickConnect && pickPreferred) {
+                // ✅ IMPORTANT: Inside Warpcast, force the Injected connector
+                // (Base/Coinbase provides an injected provider in the in-app webview).
+                if (insideFarcaster && injected) {
                   try {
-                    await connectAsync({ connector: pickPreferred });
-                    if (typeof window !== "undefined") {
-                      localStorage.setItem(LAST_CONNECTOR_KEY, pickPreferred.id);
-                    }
+                    await connectAsync({ connector: injected });
+                    localStorage.setItem(LAST_CONNECTOR_KEY, injected.id);
                     return;
                   } catch {
-                    // fall through to modal
+                    // fall back to modal if injected fails
+                    openConnectModal?.();
+                    return;
                   }
                 }
+
+                // Normal web: prefer last-used connector; if that is coinbaseSDK it may open a popup.
+                // Let RainbowKit modal handle UX in that case.
                 openConnectModal?.();
               };
 
@@ -185,7 +136,6 @@ export default function Nav() {
                 );
               }
 
-              // Connected state — same brand styling
               return (
                 <div className="flex items-center gap-2">
                   <button
@@ -196,7 +146,6 @@ export default function Nav() {
                     title={chain?.name ?? "Chain"}
                   >
                     {chain?.iconUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         alt={chain?.name ?? "Chain"}
                         src={chain.iconUrl}
@@ -205,11 +154,8 @@ export default function Nav() {
                         style={{ borderRadius: 999, objectFit: "cover" }}
                       />
                     ) : null}
-                    <span className="hidden sm:inline">
-                      {chain?.name ?? "Chain"}
-                    </span>
+                    <span className="hidden sm:inline">{chain?.name ?? "Chain"}</span>
                   </button>
-
                   <button
                     onClick={openAccountModal}
                     className={baseBtn}
