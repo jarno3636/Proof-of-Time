@@ -63,6 +63,13 @@ export function isBaseAppUA(): boolean {
   );
 }
 
+/** Simple mobile UA check (good enough for deciding to try native deep link) */
+export function isMobileUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod|Android|Mobile|CriOS|FxiOS/i.test(ua);
+}
+
 /* ---------------- URL helpers ---------------- */
 
 function toAbsoluteUrl(input: string, base = SITE_URL): string {
@@ -97,6 +104,24 @@ export function buildFarcasterComposeUrl({
   embeds?: string[];
 } = {}): string {
   const url = new URL("https://warpcast.com/~/compose");
+  if (text) url.searchParams.set("text", text);
+  for (const e of embeds || []) {
+    const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
+    if (abs) url.searchParams.append("embeds[]", abs);
+  }
+  return url.toString();
+}
+
+/** Build a Farcaster deep link that opens the native app composer */
+export function buildFarcasterDeepLink({
+  text = "",
+  embeds = [] as string[],
+}: {
+  text?: string;
+  embeds?: string[];
+} = {}): string {
+  // farcaster://casts/compose?text=...&embeds[]=...
+  const url = new URL("farcaster://casts/compose");
   if (text) url.searchParams.set("text", text);
   for (const e of embeds || []) {
     const abs = e ? toAbsoluteUrl(e, SITE_URL) : "";
