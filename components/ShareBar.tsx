@@ -2,7 +2,8 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { composeCastEverywhere, FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
+import { FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
+import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
 type Token = {
   token_address: `0x${string}`;
@@ -22,7 +23,6 @@ export default function ShareBar({
   tokens: Token[];
   selectedSymbols?: string[];
 }) {
-  // de-duped selected
   const selected = useMemo(() => {
     if (!selectedSymbols.length) return [] as Token[];
     const wanted = new Set(selectedSymbols.map((s) => s.toUpperCase()));
@@ -44,7 +44,7 @@ export default function ShareBar({
   const imgAllUrl = useMemo(() => {
     const u = new URL(`/api/share/altar`, site);
     u.searchParams.set("address", address);
-    u.searchParams.set("_", String(Date.now()));
+    u.searchParams.set("_", String(Date.now())); // cache-bust for testing
     return u.toString();
   }, [site, address]);
 
@@ -84,16 +84,6 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  // —— Farcaster: try SDK compose; fall back to web composer ——
-  const shareAllFC = useCallback(() => {
-    void composeCastEverywhere({ text: buildText(tokens, 320), embeds: [imgAllUrl] });
-  }, [tokens, imgAllUrl]);
-
-  const shareSelectedFC = useCallback(() => {
-    if (!selected.length) return;
-    void composeCastEverywhere({ text: buildText(selected, 320), embeds: [imgSelectedUrl] });
-  }, [selected, imgSelectedUrl]);
-
   // —— X / Twitter ——
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
@@ -112,22 +102,23 @@ export default function ShareBar({
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        {/* Farcaster */}
-        <button
-          onClick={shareAllFC}
-          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
+        {/* Farcaster via reusable button */}
+        <ShareToFarcasterButton
+          text={buildText(tokens, 320)}
+          embeds={[imgAllUrl]}
           title="Share all relics on Farcaster"
         >
           Share Altar (Farcaster)
-        </button>
-        <button
-          onClick={shareSelectedFC}
+        </ShareToFarcasterButton>
+
+        <ShareToFarcasterButton
+          text={buildText(selected, 320)}
+          embeds={[imgSelectedUrl]}
           disabled={!selected.length}
-          className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
           title="Share selected relics on Farcaster"
         >
           Share Selected (Farcaster)
-        </button>
+        </ShareToFarcasterButton>
 
         {/* X / Twitter */}
         <button
