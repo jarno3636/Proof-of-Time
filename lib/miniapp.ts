@@ -23,6 +23,11 @@ export function siteOrigin() {
   return process.env.NEXT_PUBLIC_SITE_URL || "https://proofoftime.vercel.app";
 }
 
+/** Public Farcaster Mini App deeplink you want to promote in casts (used by HomeShareBar, etc.) */
+export const FARCASTER_MINIAPP_LINK =
+  (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_FC_MINIAPP_LINK) ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
 export function safeUrl(u = ""): string {
   try {
     return new URL(String(u || ""), siteOrigin()).toString();
@@ -88,7 +93,6 @@ async function tryImport<T = any>(spec: string): Promise<T | null> {
 export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   const global = await getGlobalSdk();
   if (global) return global;
-  // no static string literal import here:
   const fromModule = await tryImport<MiniAppSdk>("@farcaster/miniapp-sdk");
   return (fromModule as any) || null;
 }
@@ -113,6 +117,20 @@ export async function ensureReady(timeoutMs = 1200): Promise<void> {
   } catch {
     // noop
   }
+}
+
+/** Legacy-friendly wrapper (your FarcasterMiniBridge imports this). */
+export async function signalMiniAppReady(): Promise<void> {
+  try {
+    await ensureReady(900);
+  } catch {}
+  // also ping any legacy globals if present (no-ops otherwise)
+  try {
+    (window as any)?.farcaster?.actions?.ready?.();
+  } catch {}
+  try {
+    (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.();
+  } catch {}
 }
 
 /* ---------------- Base App MiniKit (optional bridge) ---------------- */
