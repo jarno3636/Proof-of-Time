@@ -1,18 +1,12 @@
 // app/mini/page.tsx
 "use client";
-
 import { useEffect } from "react";
 import Link from "next/link";
 
 export default function MiniEntry() {
   useEffect(() => {
-    // Tell Warpcast we’re ready ASAP
+    // light safety net after hydration
     try { (window as any)?.farcaster?.actions?.ready?.(); } catch {}
-    // Soft fallback retry
-    const id = setInterval(() => {
-      try { (window as any)?.farcaster?.actions?.ready?.(); } catch {}
-    }, 250);
-    setTimeout(() => clearInterval(id), 5000);
   }, []);
 
   return (
@@ -22,23 +16,18 @@ export default function MiniEntry() {
         <p className="mt-2 text-zinc-400">Your longest-held tokens on Base. Time &gt; hype.</p>
 
         <div className="mt-6 grid gap-3">
-          <Link
-            href="/"
-            className="rounded-2xl bg-[#BBA46A] text-[#0b0e14] px-4 py-3 font-semibold"
-          >
+          <Link href="/" className="rounded-2xl bg-[#BBA46A] text-[#0b0e14] px-4 py-3 font-semibold">
             Enter Your Altar
           </Link>
           <Link
-            href="/relic/0x0000000000000000000000000000000000000000" // optional demo address
+            href="/relic/0x0000000000000000000000000000000000000000"
             className="rounded-2xl border border-white/10 px-4 py-3 text-zinc-200"
           >
             View Example Altar
           </Link>
         </div>
 
-        <p className="mt-4 text-xs text-zinc-500">
-          Tip: Share from inside Warpcast to keep posts in-app.
-        </p>
+        <p className="mt-4 text-xs text-zinc-500">Tip: Share from inside Warpcast to keep posts in-app.</p>
       </div>
     </main>
   );
