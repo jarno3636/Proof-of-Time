@@ -1,4 +1,4 @@
-// // app/layout.tsx (Server Component)
+// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
@@ -67,19 +67,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
 
-        {/* (Optional) ultra-early ready ping; harmless if SDK not present */}
+        {/* Ultra-early MiniApp ready ping (harmless if SDK not present) */}
         <script
           id="fc-miniapp-ready"
           dangerouslySetInnerHTML={{
             __html: `
 (function(){
+  if (window.__fcReadyPinged) return; window.__fcReadyPinged = true;
   function signalReady(){
     try{window.farcaster?.actions?.ready?.()}catch(e){}
     try{window.farcaster?.miniapp?.sdk?.actions?.ready?.()}catch(e){}
   }
   signalReady();
-  document.addEventListener('DOMContentLoaded', signalReady);
-  var n=0, iv=setInterval(function(){ n++; signalReady(); if(n>=50) clearInterval(iv); },120);
+  document.addEventListener('DOMContentLoaded', signalReady, { once: true });
+  var n=0, iv=setInterval(function(){ n++; signalReady(); if(n>=40) clearInterval(iv); }, 150);
 })();
           `,
           }}
@@ -88,8 +89,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
         {/* Subtle “temple” backdrop */}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
-        {/* Prime mini-app environment */}
+
+        {/* Client boot: dynamic SDK load + last-chance ready ping */}
         <MiniAppBoot />
+
         <Providers>{children}</Providers>
       </body>
     </html>
