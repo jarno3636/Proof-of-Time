@@ -1,10 +1,11 @@
-// app/layout.tsx
+// // app/layout.tsx (Server Component)
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
+import MiniAppBoot from "@/components/MiniAppBoot";
 
-/* ---------- Resolve a stable absolute site URL (server-safe) ---------- */
+/* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (env) return env;
@@ -66,23 +67,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
 
-        {/* 🟣 Mini-app: pre-hydration ping to hide Warpcast splash ASAP */}
+        {/* (Optional) ultra-early ready ping; harmless if SDK not present */}
         <script
           id="fc-miniapp-ready"
           dangerouslySetInnerHTML={{
             __html: `
 (function(){
-  function signalReady() {
-    try { window.farcaster && window.farcaster.actions && window.farcaster.actions.ready && window.farcaster.actions.ready(); } catch (e) {}
+  function signalReady(){
+    try{window.farcaster?.actions?.ready?.()}catch(e){}
+    try{window.farcaster?.miniapp?.sdk?.actions?.ready?.()}catch(e){}
   }
   signalReady();
   document.addEventListener('DOMContentLoaded', signalReady);
-  var tries = 0, max = 50;
-  var iv = setInterval(function(){
-    tries++;
-    signalReady();
-    if (tries >= max || (window.farcaster && window.farcaster.actions)) clearInterval(iv);
-  }, 120);
+  var n=0, iv=setInterval(function(){ n++; signalReady(); if(n>=50) clearInterval(iv); },120);
 })();
           `,
           }}
@@ -91,6 +88,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
         {/* Subtle “temple” backdrop */}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
+        {/* Prime mini-app environment */}
+        <MiniAppBoot />
         <Providers>{children}</Providers>
       </body>
     </html>
