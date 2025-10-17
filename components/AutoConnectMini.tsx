@@ -1,10 +1,21 @@
+// components/AutoConnectMini.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { isFarcasterUA } from "@/lib/miniapp";
 
-/** One-shot auto-connect when running inside Warpcast */
+function pickPreferred(connectors: ReturnType<typeof useConnect>["connectors"]) {
+  // Prefer Coinbase inside Farcaster (if present), then Injected, then any ready connector.
+  const byId = Object.fromEntries(connectors.map(c => [c.id, c]));
+  const cb   = connectors.find(c => /coinbase/i.test(c.name)) || byId["coinbaseWalletSDK"];
+  const inj  = connectors.find(c => /injected/i.test(c.name)) || byId["injected"];
+  const ready = connectors.find(c => (c as any).ready);
+  return cb || inj || ready || connectors[0];
+}
+
+/** One-shot auto-connect when running inside Warpcast (no modal).
+ *  If it can’t connect, it silently does nothing. */
 export default function AutoConnectMini() {
   const tried = useRef(false);
   const { isConnected } = useAccount();
@@ -12,36 +23,29 @@ export default function AutoConnectMini() {
 
   useEffect(() => {
     if (tried.current) return;
-    if (!isFarcasterUA()) return;
+    if (!isFarcasterUA()) return;                    // only try inside Warpcast
     if (isConnected) return;
     if (status === "pending" || status === "success") return;
 
     tried.current = true;
 
     const run = async () => {
-      await new Promise((r) => setTimeout(r, 400)); // let SDK settle
-
-      const injected =
-        connectors.find((c) => /injected/i.test(c.name)) ||
-        connectors.find((c) => c.id === "injected");
-
-      const coinbase =
-        connectors.find((c) => /coinbase/i.test(c.name)) ||
-        connectors.find((c) => c.id === "coinbaseWalletSDK");
-
-      const pick = injected || coinbase || connectors[0];
+      // Allow Farcaster SDK / wallet bridges to settle
+      await new Promise((r) => setTimeout(r, 450));
+      const pick = pickPreferred(connectors);
       if (!pick) return;
-
       try {
         await connectAsync({ connector: pick });
+        // persist last connector for later click-to-reconnect
+        if (typeof window !== "undefined") localStorage.setItem("__pot_last_connector", pick.id);
       } catch {
-        /* ignore */
+        // ignore — user can always click the button
       }
     };
 
-    const key = "__pot_auto_connect_v1";
-    if (typeof window !== "undefined" && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, "1");
+    // only once per session
+    if (typeof window !== "undefined" && !sessionStorage.getItem("__pot_auto_connect_v1")) {
+      sessionStorage.setItem("__pot_auto_connect_v1", "1");
       void run();
     }
   }, [connectors, connectAsync, isConnected, status]);
