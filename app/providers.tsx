@@ -21,6 +21,7 @@ import {
 
 import { MiniKitContextProvider } from "@/providers/MiniKitProvider";
 import FarcasterMiniBridge from "@/components/FarcasterMiniBridge";
+import AutoConnectMini from "@/components/AutoConnectMini"; // ← NEW
 
 const INFURA_KEY =
   process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
@@ -74,8 +75,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             modalSize="compact"
             coolMode
           >
-            {/* ✅ Signals Warpcast mini-app readiness after hydration */}
+            {/* ✅ Signals Warpcast mini-app readiness */}
             <FarcasterMiniBridge />
+            {/* ✅ Auto-connect when inside Warpcast */}
+            <AutoConnectMini />
             {children}
           </RainbowKitProvider>
         </QueryClientProvider>
