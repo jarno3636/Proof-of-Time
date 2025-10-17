@@ -9,7 +9,6 @@ import {
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { base } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
 
 import {
   injectedWallet,
@@ -21,7 +20,7 @@ import {
 } from "@rainbow-me/rainbowkit/wallets";
 
 import { MiniKitContextProvider } from "@/providers/MiniKitProvider";
-import { signalMiniAppReady } from "@/lib/miniapp"; // ← tells Warpcast MiniApp we're ready (no-op elsewhere)
+import FarcasterMiniBridge from "@/components/FarcasterMiniBridge";
 
 const INFURA_KEY =
   process.env.NEXT_PUBLIC_INFURA_KEY || process.env.INFURA_API_KEY || "";
@@ -30,7 +29,6 @@ const WC_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
   "";
 
-// Wallet groups
 const wallets = [
   {
     groupName: "Popular",
@@ -66,11 +64,6 @@ const config = createConfig({
 const qc = new QueryClient();
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    // If running inside Warpcast MiniApp, signal readiness (safe no-op in normal browsers)
-    signalMiniAppReady();
-  }, []);
-
   return (
     <MiniKitContextProvider>
       <WagmiProvider config={config} reconnectOnMount>
@@ -81,6 +74,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             modalSize="compact"
             coolMode
           >
+            {/* ✅ Signals Warpcast mini-app readiness after hydration */}
+            <FarcasterMiniBridge />
             {children}
           </RainbowKitProvider>
         </QueryClientProvider>
