@@ -36,6 +36,7 @@ export default function ShareBar({
     });
   }, [tokens, selectedSymbols]);
 
+  // Absolute site origin for image URLs
   const site =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
@@ -93,10 +94,12 @@ export default function ShareBar({
     if (typeof window !== "undefined") {
       const inWarpcast = /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
       if (inWarpcast) {
+        // inside the Warpcast webview: navigate in-place
         window.location.href = url;
       } else {
+        // web/dapp: open in a new tab (fallback to same-tab if popup blocked)
         const w = window.open(url, "_blank", "noopener,noreferrer");
-        if (!w) window.location.href = url; // popup blocked
+        if (!w) window.location.href = url;
       }
     }
   }, []);
@@ -105,12 +108,13 @@ export default function ShareBar({
     () => openWarpcastComposer(buildText(tokens, 320), imgAllUrl),
     [tokens, imgAllUrl, openWarpcastComposer]
   );
+
   const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
     openWarpcastComposer(buildText(selected, 320), imgSelectedUrl);
   }, [selected, imgSelectedUrl, openWarpcastComposer]);
 
-  // —— X / Twitter (optional) ——
+  // —— X / Twitter ——
   function openXShare(text: string, url?: string) {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
