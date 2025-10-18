@@ -47,7 +47,7 @@ export function isFarcasterUA(): boolean {
   return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
 }
 export function isInFarcasterEnv(): boolean {
-  if (typeof window !== "undefined" && (window as any)?.farcaster) return true;
+  if (typeof window !== "undefined" && (window as any)?.farcaster) return true; // injected globals
   return isFarcasterUA();
 }
 
@@ -75,8 +75,10 @@ export function buildFarcasterComposeUrl({
 async function getGlobalSdk(): Promise<MiniAppSdk | null> {
   if (typeof window === "undefined") return null;
   const g = window as any;
+  // try common shapes from different Warpcast builds
   return (
     g?.farcaster?.miniapp?.sdk ||
+    g?.Farcaster?.mini?.sdk ||
     g?.farcaster?.actions ||
     g?.sdk ||
     null
@@ -110,7 +112,7 @@ export async function getFrameSdk(): Promise<MiniAppSdk | null> {
   return (fromModule as any) || null;
 }
 
-/** Ready ping — safe to call anywhere */
+/** Ready ping — safe to call anywhere (short race so it never blocks) */
 export async function ensureReady(timeoutMs = 1200): Promise<void> {
   try {
     const sdk = (await getFrameSdk()) || (await getMiniSdk());
@@ -135,6 +137,9 @@ export async function signalMiniAppReady(): Promise<void> {
   try {
     (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.();
   } catch {}
+  try {
+    (window as any)?.Farcaster?.mini?.sdk?.actions?.ready?.();
+  } catch {}
 }
 
 /* ---------------- Base App MiniKit (optional bridge) ---------------- */
@@ -143,17 +148,6 @@ function getMiniKit(): any | null {
   if (typeof window === "undefined") return null;
   const w = window as any;
   return w?.miniKit || w?.coinbase?.miniKit || null;
-}
-
-async function tryBaseComposeCast(args: { text?: string; embeds?: string[] }) {
-  try {
-    const mk = getMiniKit();
-    if (mk?.composeCast) {
-      await mk.composeCast(args);
-      return true;
-    }
-  } catch {}
-  return false;
 }
 
 /* ---------------- Open URL inside Warpcast/Base when possible ---------------- */
@@ -222,6 +216,24 @@ export async function openInMini(url: string): Promise<boolean> {
 
 /* ---------------- Compose helpers ---------------- */
 
+function normalizeText(s?: string) {
+  // Guard composer text length (Warpcast handles long text, but keep it sane)
+  return String(s ?? "").slice(0, 3200);
+}
+
+function normalizeEmbeds(list?: string[]) {
+  return (list || [])
+    .map((u) => {
+      try {
+        const abs = new URL(String(u), siteOrigin()).toString();
+        return /^https?:\/\//i.test(abs) ? abs : "";
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+}
+
 /**
  * Try to compose a cast inside Warpcast/Base first.
  * Returns true if handled natively; false to let caller open web composer.
@@ -233,37 +245,56 @@ export async function composeCast({
   text?: string;
   embeds?: string[];
 } = {}): Promise<boolean> {
-  const normEmbeds = (embeds || []).map(toAbsoluteHttpUrl).filter(Boolean);
+  const normText = normalizeText(text);
+  const normEmbeds = normalizeEmbeds(embeds);
 
-  // Base App MiniKit (optional)
-  if (await tryBaseComposeCast({ text, embeds: normEmbeds })) return true;
+  // 0) Base App MiniKit (optional)
+  try {
+    const mk = getMiniKit();
+    if (mk?.composeCast) {
+      await mk.composeCast({ text: normText, embeds: normEmbeds });
+      return true;
+    }
+  } catch {}
 
-  // Frame SDK (newer share / compose)
-  const frame = await getFrameSdk();
-  if (frame?.actions?.share) {
-    try {
-      await ensureReady();
-      await frame.actions.share({ text, embeds: normEmbeds });
+  // 1) Frame SDK (newer share / compose)
+  try {
+    const frame = await getFrameSdk();
+    const acts = frame?.actions || {};
+    if (acts?.ready) {
+      try {
+        await Promise.race([Promise.resolve(acts.ready()), new Promise((r) => setTimeout(r, 800))]);
+      } catch {}
+    }
+    if (acts?.share) {
+      await acts.share({ text: normText, embeds: normEmbeds });
       return true;
-    } catch {}
-  }
-  if (frame?.actions?.composeCast) {
-    try {
-      await ensureReady();
-      await frame.actions.composeCast({ text, embeds: normEmbeds });
+    }
+    if (acts?.composeCast) {
+      await acts.composeCast({ text: normText, embeds: normEmbeds });
       return true;
-    } catch {}
-  }
+    }
+  } catch {}
 
-  // Mini App SDK (official mini runtime)
-  const mini = await getMiniSdk();
-  if (mini?.actions?.composeCast) {
-    try {
-      await ensureReady();
-      await mini.actions.composeCast({ text, embeds: normEmbeds });
+  // 2) Mini App SDK (official mini runtime)
+  try {
+    const mini = await getMiniSdk();
+    const acts = mini?.actions || {};
+    if (acts?.ready) {
+      try {
+        await Promise.race([Promise.resolve(acts.ready()), new Promise((r) => setTimeout(r, 800))]);
+      } catch {}
+    }
+    if (acts?.composeCast) {
+      await acts.composeCast({ text: normText, embeds: normEmbeds });
       return true;
-    } catch {}
-  }
+    }
+    // Some legacy builds exposed only `share`
+    if (acts?.share) {
+      await acts.share({ text: normText, embeds: normEmbeds });
+      return true;
+    }
+  } catch {}
 
   return false;
 }
@@ -274,6 +305,7 @@ export async function composeCast({
  * - Else open Warpcast web composer (in new tab; fallback to same tab)
  *
  * Returns "sdk" if in-app handled, otherwise "web".
+ * NOTE: If you want to avoid web-composer inside Warpcast, gate that in your caller (share.ts).
  */
 export async function composeCastEverywhere({
   text = "",
