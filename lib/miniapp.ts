@@ -17,10 +17,16 @@ export type MiniAppSdk = {
 };
 
 /* ---------------- Env + URL helpers ---------------- */
+
 export function siteOrigin() {
   if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
   return process.env.NEXT_PUBLIC_SITE_URL || "https://proofoftime.vercel.app";
 }
+
+/** Public Farcaster Mini App deeplink you want to promote in casts (used by HomeShareBar, etc.) */
+export const FARCASTER_MINIAPP_LINK =
+  (typeof process !== "undefined" && (process as any).env?.NEXT_PUBLIC_FC_MINIAPP_LINK) ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
 export function safeUrl(u = ""): string {
   try {
@@ -35,13 +41,18 @@ function toAbsoluteHttpUrl(u = ""): string {
   return /^https?:\/\//i.test(abs) ? abs : "";
 }
 
-/** UA helper kept for back-compat (Nav.tsx, AutoConnectMini.tsx) */
+/** UA / runtime helpers (export both for back-compat) */
 export function isFarcasterUA(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
 }
+export function isInFarcasterEnv(): boolean {
+  if (typeof window !== "undefined" && (window as any)?.farcaster) return true;
+  return isFarcasterUA();
+}
 
 /* ---------------- Warpcast web composer URL ---------------- */
+
 export function buildFarcasterComposeUrl({
   text = "",
   embeds = [] as string[],
@@ -58,13 +69,21 @@ export function buildFarcasterComposeUrl({
   return url.toString();
 }
 
-/* ---------------- Dynamic SDK loaders ---------------- */
+/* ---------------- Dynamic SDK loaders (toolbox-safe) ---------------- */
+
+/** Prefer globals if the host injected them. */
 async function getGlobalSdk(): Promise<MiniAppSdk | null> {
   if (typeof window === "undefined") return null;
   const g = window as any;
-  return g?.farcaster?.miniapp?.sdk || g?.farcaster?.actions || g?.sdk || null;
+  return (
+    g?.farcaster?.miniapp?.sdk ||
+    g?.farcaster?.actions ||
+    g?.sdk ||
+    null
+  );
 }
 
+/** Use a string-based dynamic importer so bundlers don't resolve the module at build time. */
 async function tryImport<T = any>(spec: string): Promise<T | null> {
   try {
     const importer = Function("m", "return import(m)") as (m: string) => Promise<any>;
@@ -75,6 +94,7 @@ async function tryImport<T = any>(spec: string): Promise<T | null> {
   }
 }
 
+/** Load @farcaster/miniapp-sdk (optional dependency) without tripping bundlers. */
 export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   const global = await getGlobalSdk();
   if (global) return global;
@@ -82,6 +102,7 @@ export async function getMiniSdk(): Promise<MiniAppSdk | null> {
   return (fromModule as any) || null;
 }
 
+/** Load @farcaster/frame-sdk (optional dependency) without tripping bundlers. */
 export async function getFrameSdk(): Promise<MiniAppSdk | null> {
   const global = await getGlobalSdk();
   if (global) return global;
@@ -89,7 +110,7 @@ export async function getFrameSdk(): Promise<MiniAppSdk | null> {
   return (fromModule as any) || null;
 }
 
-/** Ready ping — safe anywhere */
+/** Ready ping — safe to call anywhere */
 export async function ensureReady(timeoutMs = 1200): Promise<void> {
   try {
     const sdk = (await getFrameSdk()) || (await getMiniSdk());
@@ -98,16 +119,26 @@ export async function ensureReady(timeoutMs = 1200): Promise<void> {
       Promise.resolve(sdk.actions.ready()),
       new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
     ]);
+  } catch {
+    // noop
+  }
+}
+
+/** Legacy-friendly wrapper (for FarcasterMiniBridge). */
+export async function signalMiniAppReady(): Promise<void> {
+  try {
+    await ensureReady(900);
+  } catch {}
+  try {
+    (window as any)?.farcaster?.actions?.ready?.();
+  } catch {}
+  try {
+    (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.();
   } catch {}
 }
 
-export async function signalMiniAppReady(): Promise<void> {
-  try { await ensureReady(900); } catch {}
-  try { (window as any)?.farcaster?.actions?.ready?.(); } catch {}
-  try { (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch {}
-}
+/* ---------------- Base App MiniKit (optional bridge) ---------------- */
 
-/* ---------------- (Optional) Base App MiniKit bridge ---------------- */
 function getMiniKit(): any | null {
   if (typeof window === "undefined") return null;
   const w = window as any;
@@ -125,12 +156,76 @@ async function tryBaseComposeCast(args: { text?: string; embeds?: string[] }) {
   return false;
 }
 
-/* ---------------- Compose helpers ---------------- */
-function onlyHttpEmbeds(list?: string[]) {
-  return (list || []).map(toAbsoluteHttpUrl).filter(Boolean);
+/* ---------------- Open URL inside Warpcast/Base when possible ---------------- */
+
+export async function openInMini(url: string): Promise<boolean> {
+  const safe = safeUrl(url);
+  if (!safe) return false;
+
+  // 1) Base App bridge
+  try {
+    const mk = getMiniKit();
+    if (mk?.openUrl) {
+      await mk.openUrl(safe);
+      return true;
+    }
+    if (mk?.openURL) {
+      await mk.openURL(safe);
+      return true;
+    }
+  } catch {}
+
+  // 2) Farcaster runtimes
+  try {
+    const frame = await getFrameSdk();
+    if (frame?.actions?.openUrl) {
+      try {
+        await (frame.actions.openUrl as any)(safe);
+      } catch {
+        await (frame.actions.openUrl as any)({ url: safe });
+      }
+      return true;
+    }
+    if (frame?.actions?.openURL) {
+      await frame.actions.openURL(safe);
+      return true;
+    }
+
+    const mini = await getMiniSdk();
+    if (mini?.actions?.openUrl) {
+      try {
+        await (mini.actions.openUrl as any)(safe);
+      } catch {
+        await (mini.actions.openUrl as any)({ url: safe });
+      }
+      return true;
+    }
+    if (mini?.actions?.openURL) {
+      await mini.actions.openURL(safe);
+      return true;
+    }
+  } catch {}
+
+  // 3) Fallback: same-tab nav
+  if (typeof window !== "undefined") {
+    try {
+      window.location.assign(safe);
+      return true;
+    } catch {}
+    try {
+      window.open(safe, "_self", "noopener,noreferrer");
+      return true;
+    } catch {}
+  }
+  return false;
 }
 
-/** Try to compose a cast inside Warpcast/Base first. */
+/* ---------------- Compose helpers ---------------- */
+
+/**
+ * Try to compose a cast inside Warpcast/Base first.
+ * Returns true if handled natively; false to let caller open web composer.
+ */
 export async function composeCast({
   text = "",
   embeds = [],
@@ -138,30 +233,48 @@ export async function composeCast({
   text?: string;
   embeds?: string[];
 } = {}): Promise<boolean> {
-  const norm = onlyHttpEmbeds(embeds);
+  const normEmbeds = (embeds || []).map(toAbsoluteHttpUrl).filter(Boolean);
 
-  // Base App (if present)
-  if (await tryBaseComposeCast({ text, embeds: norm })) return true;
+  // Base App MiniKit (optional)
+  if (await tryBaseComposeCast({ text, embeds: normEmbeds })) return true;
 
-  // Newer frame-sdk
+  // Frame SDK (newer share / compose)
   const frame = await getFrameSdk();
   if (frame?.actions?.share) {
-    try { await ensureReady(); await frame.actions.share({ text, embeds: norm }); return true; } catch {}
+    try {
+      await ensureReady();
+      await frame.actions.share({ text, embeds: normEmbeds });
+      return true;
+    } catch {}
   }
   if (frame?.actions?.composeCast) {
-    try { await ensureReady(); await frame.actions.composeCast({ text, embeds: norm }); return true; } catch {}
+    try {
+      await ensureReady();
+      await frame.actions.composeCast({ text, embeds: normEmbeds });
+      return true;
+    } catch {}
   }
 
-  // Mini app sdk
+  // Mini App SDK (official mini runtime)
   const mini = await getMiniSdk();
   if (mini?.actions?.composeCast) {
-    try { await ensureReady(); await mini.actions.composeCast({ text, embeds: norm }); return true; } catch {}
+    try {
+      await ensureReady();
+      await mini.actions.composeCast({ text, embeds: normEmbeds });
+      return true;
+    } catch {}
   }
 
   return false;
 }
 
-/** Compose everywhere: SDK first; else open web composer (single route). */
+/**
+ * Compose everywhere:
+ * - Try SDKs (Base MiniKit → Frame SDK → Mini App SDK)
+ * - Else open Warpcast web composer (in new tab; fallback to same tab)
+ *
+ * Returns "sdk" if in-app handled, otherwise "web".
+ */
 export async function composeCastEverywhere({
   text = "",
   embeds = [],
@@ -178,43 +291,4 @@ export async function composeCastEverywhere({
     if (!w) window.location.href = url;
   }
   return "web";
-}
-
-/* ---------------- Optional: openInMini ---------------- */
-export async function openInMini(url: string): Promise<boolean> {
-  const safe = safeUrl(url);
-  if (!safe) return false;
-
-  // 1) Base App bridge
-  try {
-    const mk = getMiniKit();
-    if (mk?.openUrl) { await mk.openUrl(safe); return true; }
-    if (mk?.openURL) { await mk.openURL(safe); return true; }
-  } catch {}
-
-  // 2) Farcaster runtimes
-  try {
-    const frame = await getFrameSdk();
-    if (frame?.actions?.openUrl) {
-      try { await (frame.actions.openUrl as any)(safe); }
-      catch { await (frame.actions.openUrl as any)({ url: safe }); }
-      return true;
-    }
-    if (frame?.actions?.openURL) { await frame.actions.openURL(safe); return true; }
-
-    const mini = await getMiniSdk();
-    if (mini?.actions?.openUrl) {
-      try { await (mini.actions.openUrl as any)(safe); }
-      catch { await (mini.actions.openUrl as any)({ url: safe }); }
-      return true;
-    }
-    if (mini?.actions?.openURL) { await mini.actions.openURL(safe); return true; }
-  } catch {}
-
-  // 3) Fallback: same-tab nav
-  if (typeof window !== "undefined") {
-    try { window.location.assign(safe); return true; } catch {}
-    try { window.open(safe, "_self", "noopener,noreferrer"); return true; } catch {}
-  }
-  return false;
 }
