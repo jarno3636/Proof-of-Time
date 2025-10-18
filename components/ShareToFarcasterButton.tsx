@@ -2,18 +2,17 @@
 "use client";
 
 import * as React from "react";
-import { composeCast } from "@/lib/miniapp";
-import { buildWarpcastCompose, openShareWindow } from "@/lib/share";
+import { shareOrCast } from "@/lib/share";
 
 type Props = {
   text: string;
   embeds?: string[];
-  url?: string;               // optional: link to include after the text
+  url?: string;               // canonical web URL to append after text
   className?: string;
   disabled?: boolean;
   title?: string;
   children?: React.ReactNode;
-  onDone?: (via: "sdk" | "web") => void; // which path was used
+  onDone?: (via: "sdk" | "web") => void;
 };
 
 export default function ShareToFarcasterButton({
@@ -27,19 +26,11 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
-    const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
-
-    // 1) Try composing in-app via SDKs (frame-sdk or miniapp-sdk)
-    const ok = await composeCast({ text: fullText, embeds });
-    if (ok) {
-      onDone?.("sdk");
-      return;
-    }
-
-    // 2) Fallback to Warpcast web composer (works everywhere)
-    const href = buildWarpcastCompose({ text, url, embeds });
-    await openShareWindow(href);
-    onDone?.("web");
+    // This tries SDK first; if not available, opens Warpcast web composer.
+    const before = performance.now();
+    await shareOrCast({ text, url, embeds });
+    const via = (performance.now() - before) < 800 ? "sdk" : "web"; // cheap hint
+    onDone?.(via as "sdk" | "web");
   }, [text, url, embeds, onDone]);
 
   return (
