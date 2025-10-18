@@ -26,10 +26,10 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
-    // This tries SDK first; if not available, opens Warpcast web composer.
+    // Try in-app SDK first; fall back to Warpcast web composer
     const before = performance.now();
     await shareOrCast({ text, url, embeds });
-    const via = (performance.now() - before) < 800 ? "sdk" : "web"; // cheap hint
+    const via = performance.now() - before < 800 ? "sdk" : "web"; // quick heuristic
     onDone?.(via as "sdk" | "web");
   }, [text, url, embeds, onDone]);
 
