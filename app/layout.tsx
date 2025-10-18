@@ -1,4 +1,3 @@
-// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
@@ -68,6 +67,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
 
+        {/* ✅ Load Farcaster Mini-App SDK globally */}
+        <script async src="https://cdn.farcaster.xyz/sdk/miniapp/v2.js"></script>
+
         {/* Ultra-early MiniApp ready ping + retries.
             - Fires immediately
             - Retries on visibility/focus/page show
@@ -86,6 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     if (done) return;
     try { window.farcaster?.actions?.ready?.(); } catch(e) {}
     try { window.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch(e) {}
+    try { window.Farcaster?.mini?.sdk?.actions?.ready?.(); } catch(e) {}
     attempts++;
     if (attempts >= maxAttempts) stop();
   }
