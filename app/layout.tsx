@@ -4,6 +4,7 @@ import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import MiniAppBoot from "@/components/MiniAppBoot";
+import FarcasterMiniBridge from "@/components/FarcasterMiniBridge";
 
 /* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -67,20 +68,48 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
 
-        {/* Ultra-early MiniApp ready ping (harmless if SDK not present) */}
+        {/* Ultra-early MiniApp ready ping + retries.
+            - Fires immediately
+            - Retries on visibility/focus/page show
+            - Stops after first success OR after ~6s */}
         <script
           id="fc-miniapp-ready"
           dangerouslySetInnerHTML={{
             __html: `
 (function(){
-  if (window.__fcReadyPinged) return; window.__fcReadyPinged = true;
-  function signalReady(){
-    try{window.farcaster?.actions?.ready?.()}catch(e){}
-    try{window.farcaster?.miniapp?.sdk?.actions?.ready?.()}catch(e){}
+  if (window.__fcReadyInjected) return; window.__fcReadyInjected = true;
+
+  var attempts = 0, maxAttempts = 40; // 40 * 150ms ~= 6s
+  var done = false;
+
+  function signalReadyOnce(){
+    if (done) return;
+    try { window.farcaster?.actions?.ready?.(); } catch(e) {}
+    try { window.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch(e) {}
+    attempts++;
+    if (attempts >= maxAttempts) stop();
   }
-  signalReady();
-  document.addEventListener('DOMContentLoaded', signalReady, { once: true });
-  var n=0, iv=setInterval(function(){ n++; signalReady(); if(n>=40) clearInterval(iv); }, 150);
+
+  function stop(){ done = true; try{ clearInterval(iv); }catch(_){} 
+    window.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('focus', onFocus);
+    window.removeEventListener('pageshow', onPageShow);
+    document.removeEventListener('DOMContentLoaded', signalReadyOnce, { once: true });
+  }
+
+  function onVis(){ if (!document.hidden) signalReadyOnce(); }
+  function onFocus(){ signalReadyOnce(); }
+  function onPageShow(){ signalReadyOnce(); }
+
+  // Try immediately and a few times more while the view warms up.
+  signalReadyOnce();
+  document.addEventListener('DOMContentLoaded', signalReadyOnce, { once: true });
+  var iv = setInterval(signalReadyOnce, 150);
+
+  // Also retry when the webview becomes visible/focused (common on iOS).
+  window.addEventListener('visibilitychange', onVis);
+  window.addEventListener('focus', onFocus);
+  window.addEventListener('pageshow', onPageShow);
 })();
           `,
           }}
@@ -92,6 +121,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Client boot: dynamic SDK load + last-chance ready ping */}
         <MiniAppBoot />
+
+        {/* In-app bridge: pings ready() again once React is mounted */}
+        <FarcasterMiniBridge />
 
         <Providers>{children}</Providers>
       </body>
