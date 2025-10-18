@@ -13,6 +13,10 @@ type Token = {
   tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
+const FARCASTER_MINIAPP_LINK =
+  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
 export default function ShareBar({
   address: _unused,
   tokens,
@@ -51,7 +55,7 @@ export default function ShareBar({
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
 
-  // “See yours: …” line intentionally omitted
+  // ⬇️ NOTE: “See yours: …” line REMOVED
   const buildText = (list: Token[], cap?: number) => {
     const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
     const out = lines.join("\n");
@@ -66,8 +70,8 @@ export default function ShareBar({
     setMsg(null);
     const text = buildText(tokens, 320);
     const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [] }); // no mini deeplink
-    if (!ok) setMsg("Could not open composer.");
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [tokens, site]);
 
   const shareSelectedFC = useCallback(async () => {
@@ -75,8 +79,8 @@ export default function ShareBar({
     setMsg(null);
     const text = buildText(selected, 320);
     const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [] }); // no mini deeplink
-    if (!ok) setMsg("Could not open composer.");
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [selected, site]);
 
   // Optional X/Twitter
@@ -88,10 +92,7 @@ export default function ShareBar({
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-  const shareAllX = useCallback(
-    () => openXShare(buildText(tokens, 280), site + "/"),
-    [tokens, site, openXShare]
-  );
+  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     openXShare(buildText(selected, 280), site + "/");
