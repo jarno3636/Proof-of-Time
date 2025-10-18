@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useCallback } from "react";
+import { FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
 import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
 export default function HomeShareBar() {
@@ -44,8 +45,7 @@ export default function HomeShareBar() {
     <div className="mt-8 flex flex-wrap items-center gap-3">
       <ShareToFarcasterButton
         text={text}
-        url={CTA_URL}   // ✅ canonical web URL, no mini deeplink
-        embeds={[]}     // keep embeds empty or use http(s) assets only
+        embeds={[FARCASTER_MINIAPP_LINK]}  // ✅ keep your embed
       >
         Share on Farcaster
       </ShareToFarcasterButton>
