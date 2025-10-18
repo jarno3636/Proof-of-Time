@@ -1,23 +1,17 @@
-"use client";
-import { useEffect } from "react";
-import { ensureReady } from "@/lib/miniapp";
-import { probeFarcaster } from "@/lib/farcasterDebug";
+'use client'
+import Link from 'next/link'
+import { openInMini } from '@/lib/miniapp'
 
-export default function FarcasterMiniBridge() {
-  useEffect(() => {
-    // Ping ready(); don’t throw if it’s missing.
-    ensureReady(1200).catch(() => {});
-    // Legacy globals still around in some Warpcasts:
-    try { (window as any)?.farcaster?.actions?.ready?.(); } catch {}
-    try { (window as any)?.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch {}
-
-    // Helpful console diagnostics (only when inside Warpcast/webview devtools)
-    try {
-      const p = probeFarcaster();
-      // eslint-disable-next-line no-console
-      console.debug("[FC Probe]", p);
-    } catch {}
-  }, []);
-
-  return null;
+export default function MiniLink({ href = '#', children, className = '', ...rest }) {
+  const onClick = async (e) => {
+    // Only intercept left-clicks without modifier keys
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    e.preventDefault()
+    await openInMini(href)
+  }
+  return (
+    <Link href={href} onClick={onClick} className={className} {...rest}>
+      {children}
+    </Link>
+  )
 }
