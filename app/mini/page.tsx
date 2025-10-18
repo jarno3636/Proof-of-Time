@@ -8,10 +8,10 @@ export default function MiniEntry() {
   useEffect(() => {
     const w = window as any;
 
-    // Call every known "ready" shape
     const tryReady = () => {
       try { w.farcaster?.actions?.ready?.(); } catch {}
       try { w.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch {}
+      try { w.Farcaster?.mini?.sdk?.actions?.ready?.(); } catch {}
       // Some older builds listen to a postMessage poke:
       try { w.parent?.postMessage({ type: "farcaster:miniapp:ready" }, "*"); } catch {}
     };
@@ -23,15 +23,18 @@ export default function MiniEntry() {
     const iv = setInterval(tryReady, 200);
     const stopIv = setTimeout(() => clearInterval(iv), 6000);
 
-    // 3) If SDK is not present, load the UMD build and try again onload
+    // 3) If SDK is not present, load the official CDN build and try again onload
     const hasSdk =
+      !!w.Farcaster?.mini?.sdk ||
       !!w.farcaster?.miniapp?.sdk ||
-      !!w.sdk; // some hosts expose it as window.sdk
+      !!w.farcaster?.actions ||
+      !!w.sdk;
 
     let tag: HTMLScriptElement | null = null;
     if (!hasSdk) {
       tag = document.createElement("script");
-      tag.src = "https://unpkg.com/@farcaster/miniapp-sdk/dist/sdk.umd.js";
+      // official CDN (same as we load in layout, but this catches deep links straight to /mini)
+      tag.src = "https://cdn.farcaster.xyz/sdk/miniapp/v2.js";
       tag.async = true;
       tag.onload = () => setTimeout(tryReady, 50);
       document.head.appendChild(tag);
