@@ -1,3 +1,4 @@
+// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
@@ -67,13 +68,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Perf: preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
 
-        {/* ✅ Load Farcaster Mini-App SDK globally */}
+        {/* ✅ Farcaster Mini-App SDK */}
         <script async src="https://cdn.farcaster.xyz/sdk/miniapp/v2.js"></script>
 
-        {/* Ultra-early MiniApp ready ping + retries.
-            - Fires immediately
-            - Retries on visibility/focus/page show
-            - Stops after first success OR after ~6s */}
+        {/* ✅ Farcaster Mini-App meta (helps Warpcast detect your app identity) */}
+        <meta name="x-miniapp-name" content="Proof of Time" />
+        <meta name="x-miniapp-image" content={`${site}/og.png`} />
+        <meta name="x-miniapp-url" content={site} />
+
+        {/* Ultra-early MiniApp ready ping + retries */}
         <script
           id="fc-miniapp-ready"
           dangerouslySetInnerHTML={{
