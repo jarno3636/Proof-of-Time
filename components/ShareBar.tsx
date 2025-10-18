@@ -13,10 +13,6 @@ type Token = {
   tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
-const FARCASTER_MINIAPP_LINK =
-  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
-  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
-
 export default function ShareBar({
   address: _unused,
   tokens,
@@ -55,7 +51,7 @@ export default function ShareBar({
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
 
-  // ⬇️ NOTE: “See yours: …” line REMOVED
+  // “See yours: …” line intentionally omitted
   const buildText = (list: Token[], cap?: number) => {
     const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
     const out = lines.join("\n");
@@ -70,7 +66,7 @@ export default function ShareBar({
     setMsg(null);
     const text = buildText(tokens, 320);
     const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    const ok = await shareOrCast({ text, url, embeds: [] }); // no mini deeplink
     if (!ok) setMsg("Could not open composer.");
   }, [tokens, site]);
 
@@ -79,7 +75,7 @@ export default function ShareBar({
     setMsg(null);
     const text = buildText(selected, 320);
     const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    const ok = await shareOrCast({ text, url, embeds: [] }); // no mini deeplink
     if (!ok) setMsg("Could not open composer.");
   }, [selected, site]);
 
@@ -92,7 +88,10 @@ export default function ShareBar({
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
+  const shareAllX = useCallback(
+    () => openXShare(buildText(tokens, 280), site + "/"),
+    [tokens, site, openXShare]
+  );
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     openXShare(buildText(selected, 280), site + "/");
