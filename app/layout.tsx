@@ -4,7 +4,7 @@ import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import MiniAppBoot from "@/components/MiniAppBoot";
-import FarcasterMiniBridge from "@/components/FarcasterMiniBridge";
+import AppReady from "@/components/AppReady";
 
 /* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -71,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* ✅ Farcaster Mini-App SDK */}
         <script async src="https://cdn.farcaster.xyz/sdk/miniapp/v2.js"></script>
 
-        {/* ✅ Farcaster Mini-App meta (helps Warpcast detect your app identity) */}
+        {/* ✅ Farcaster Mini-App meta */}
         <meta name="x-miniapp-name" content="Proof of Time" />
         <meta name="x-miniapp-image" content={`${site}/og.png`} />
         <meta name="x-miniapp-url" content={site} />
@@ -84,7 +84,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 (function(){
   if (window.__fcReadyInjected) return; window.__fcReadyInjected = true;
 
-  var attempts = 0, maxAttempts = 40; // 40 * 150ms ~= 6s
+  var attempts = 0, maxAttempts = 40;
   var done = false;
 
   function signalReadyOnce(){
@@ -107,12 +107,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   function onFocus(){ signalReadyOnce(); }
   function onPageShow(){ signalReadyOnce(); }
 
-  // Try immediately and a few times more while the view warms up.
   signalReadyOnce();
   document.addEventListener('DOMContentLoaded', signalReadyOnce, { once: true });
   var iv = setInterval(signalReadyOnce, 150);
-
-  // Also retry when the webview becomes visible/focused (common on iOS).
   window.addEventListener('visibilitychange', onVis);
   window.addEventListener('focus', onFocus);
   window.addEventListener('pageshow', onPageShow);
@@ -122,15 +119,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
-        {/* Subtle “temple” backdrop */}
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
-
-        {/* Client boot: dynamic SDK load + last-chance ready ping */}
+        {/* Client boot + ready ping */}
         <MiniAppBoot />
-
-        {/* In-app bridge: pings ready() again once React is mounted */}
-        <FarcasterMiniBridge />
-
+        <AppReady />
         <Providers>{children}</Providers>
       </body>
     </html>
