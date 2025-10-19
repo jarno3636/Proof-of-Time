@@ -1,9 +1,12 @@
-// components/HomeShareBar.tsx
 "use client";
 
 import { useMemo, useCallback } from "react";
-import { FARCASTER_MINIAPP_LINK } from "@/lib/miniapp";
 import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
+
+// Inline the miniapp link so we don't import from lib/miniapp.ts
+const FARCASTER_MINIAPP_LINK =
+  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
 export default function HomeShareBar() {
   const castLines = useMemo(
@@ -43,10 +46,7 @@ export default function HomeShareBar() {
 
   return (
     <div className="mt-8 flex flex-wrap items-center gap-3">
-      <ShareToFarcasterButton
-        text={text}
-        embeds={[FARCASTER_MINIAPP_LINK]}  // ✅ keep your embed
-      >
+      <ShareToFarcasterButton text={text} embeds={[FARCASTER_MINIAPP_LINK]}>
         Share on Farcaster
       </ShareToFarcasterButton>
 
