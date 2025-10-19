@@ -1,5 +1,4 @@
-// lib/share.ts
-import { composeCast, openInMini } from "./miniapp";
+import { composeCast } from "./miniapp";
 
 /* ---------- Config ---------- */
 const FARCASTER_MINIAPP_LINK =
@@ -70,9 +69,7 @@ function isSameOrigin(urlA: string, urlB: string) {
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
-  return list
-    .map((e) => safeUrl(e))
-    .filter(Boolean) as string[];
+  return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
 }
 
 /* ---------- Prefer mini link in Warpcast ---------- */
@@ -112,7 +109,7 @@ export function buildWarpcastCompose({
 }: {
   url?: string;
   text?: string;
-  embeds?: string[];           // normalized to string[]
+  embeds?: string[];
   forceMini?: boolean;
 }) {
   const shareUrl = preferMiniUrlIfPossible(url, { forceMini }) || url;
@@ -128,32 +125,7 @@ export function buildWarpcastCompose({
   return `${base}?${params.toString()}`;
 }
 
-/* ---------- Open share window (outside Warpcast) ---------- */
-export async function openShareWindow(href: string) {
-  if (!href) return;
-
-  // Inside Warpcast: DO NOT open web composer (it shows a download interstitial)
-  if (isInFarcasterEnv()) {
-    try {
-      (window as any).__toast?.("Couldn’t open composer in-app. Update Warpcast and try again.");
-    } catch {}
-    return;
-  }
-
-  // Outside Warpcast: try popup/new tab first, then hard navigate
-  try {
-    const w = window.open(href, "_blank", "noopener,noreferrer");
-    if (w) return;
-  } catch {
-    // ignore and fall through
-  }
-  try {
-    window.location.href = href;
-  } catch {
-    // last resort: do nothing
-  }
-}
-/* ---------- Main: try SDK compose, else web composer ---------- */
+/* ---------- Main: try SDK compose (in Warpcast), else open web composer (web/dapp) ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
@@ -161,7 +133,7 @@ export async function shareOrCast({
   forceMini = false,
 }: {
   text?: string;
-  embeds?: string[];           // normalized to string[]
+  embeds?: string[];
   url?: string;
   forceMini?: boolean;
 }) {
@@ -172,21 +144,29 @@ export async function shareOrCast({
 
   const embedList = normEmbeds(embeds);
 
-  // Locally widen composeCast signature to accept string[] embeds
-  const typedComposeCast = composeCast as unknown as (args: {
-    text?: string;
-    embeds?: string[];
-  }) => Promise<boolean>;
-
   if (isInFarcasterEnv()) {
+    // IN WARPCAST: SDK only
+    const typedComposeCast = composeCast as unknown as (args: {
+      text?: string;
+      embeds?: string[];
+    }) => Promise<boolean>;
+
     const ok = await typedComposeCast({ text: fullText, embeds: embedList });
-    return ok;
+    return !!ok;
   }
 
-  const ok = await typedComposeCast({ text: fullText, embeds: embedList });
-  if (ok) return true;
-
+  // OUTSIDE WARPCAST: open web composer synchronously
   const href = buildWarpcastCompose({ text, url, embeds: embedList, forceMini });
-  await openShareWindow(href);
-  return true;
+  try {
+    const w = window.open(href, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = href;
+    return true;
+  } catch {
+    try {
+      window.location.href = href;
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
