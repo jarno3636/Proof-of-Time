@@ -1,8 +1,6 @@
 "use client";
 
 import { useAccount } from "wagmi";
-import { useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import cn from "clsx";
 
 /* ---------- Helpers ---------- */
@@ -15,66 +13,16 @@ function getSiteOrigin() {
   return process.env.NEXT_PUBLIC_SITE_URL || "";
 }
 
-function hardNavigate(absUrl: string) {
-  try { window.location.assign(absUrl); return; } catch {}
-  try { window.location.href = absUrl; return; } catch {}
-  try { window.location.replace(absUrl); return; } catch {}
-  try { window.open(absUrl, "_self", "noopener,noreferrer"); return; } catch {}
-  try {
-    const a = document.createElement("a");
-    a.href = absUrl;
-    a.rel = "noreferrer noopener";
-    a.target = "_self";
-    a.style.position = "absolute";
-    a.style.left = "-9999px";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => a.remove(), 1500);
-  } catch {}
-}
-
 /* ---------- Component ---------- */
 export default function RevealRelicsButton({
   size = "md",
 }: {
   size?: "md" | "lg";
 }) {
-  const router = useRouter();
   const { address } = useAccount();
-  const origin = useMemo(getSiteOrigin, []);
-  const absHref = address ? `${origin}/relic/${address}` : ""; // used for the anchor
+  const origin = getSiteOrigin();
 
-  const go = useCallback(() => {
-    // 1) Resolve target address
-    let target = address || "";
-    if (!target) {
-      const input = window.prompt("Enter a wallet address (0x…):", "") || "";
-      const trimmed = input.trim();
-      if (!trimmed) return;
-      if (!isEthAddress(trimmed)) {
-        alert("That doesn’t look like a valid 0x address.");
-        return;
-      }
-      target = trimmed;
-    }
-
-    // 2) Absolute URL (more reliable in webviews)
-    const abs = `${origin}/relic/${target}`;
-
-    // 3) Try SPA nav, then force hard navigation
-    try {
-      router.push(abs);
-      setTimeout(() => {
-        if (document.visibilityState !== "hidden") {
-          hardNavigate(abs);
-        }
-      }, 60);
-    } catch {
-      hardNavigate(abs);
-    }
-  }, [address, origin, router]);
-
-  /* ---------- Styles ---------- */
+  // Styles
   const base =
     "inline-flex items-center justify-center gap-2 rounded-2xl border font-semibold transition " +
     "border-[#BBA46A] text-[#BBA46A] hover:bg-[#BBA46A]/10 active:scale-[0.98]";
@@ -83,27 +31,73 @@ export default function RevealRelicsButton({
     lg: "px-7 py-4 text-lg md:text-xl",
   };
 
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={go}
-        className={cn(base, sizes[size])}
-        title={address ? "Open your altar" : "Enter an address or connect"}
-        aria-label="Reveal your relics"
-        type="button"
-      >
-        Reveal your relics
-      </button>
-
-      {/* Visible link for stubborn in-app browsers (shows only when connected) */}
-      {address && (
+  // 1) CONNECTED WALLET → render a *real link* (absolute URL, target _self).
+  if (address) {
+    const hrefAbs = `${origin}/relic/${address}`;
+    return (
+      <div className="flex items-center gap-3">
         <a
-          href={absHref || `/relic/${address}`}
+          href={hrefAbs}
+          target="_self"
+          rel="noreferrer noopener"
+          className={cn(base, sizes[size])}
+          title="Open your altar"
+          aria-label="Reveal your relics"
+        >
+          Reveal your relics
+        </a>
+
+        {/* optional helper link (kept since you asked for it) */}
+        <a
+          href={hrefAbs}
+          target="_self"
+          rel="noreferrer noopener"
           className="ml-1 text-sm underline text-[#BBA46A]/80 hover:text-[#BBA46A]"
         >
           Open as link
         </a>
-      )}
-    </div>
+      </div>
+    );
+  }
+
+  // 2) NO CONNECTED WALLET → use a button that prompts for an address and then navigates.
+  async function handleClick() {
+    const input = window.prompt("Enter a wallet address (0x…):", "") || "";
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    if (!isEthAddress(trimmed)) {
+      alert("That doesn’t look like a valid 0x address.");
+      return;
+    }
+
+    const abs = `${origin}/relic/${trimmed}`;
+    // Hard navigation to play nice with wallet webviews
+    try { window.location.assign(abs); return; } catch {}
+    try { window.location.href = abs; return; } catch {}
+    try { window.location.replace(abs); return; } catch {}
+    try { window.open(abs, "_self", "noopener,noreferrer"); return; } catch {}
+    try {
+      const a = document.createElement("a");
+      a.href = abs;
+      a.target = "_self";
+      a.rel = "noreferrer noopener";
+      a.style.position = "absolute";
+      a.style.left = "-9999px";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 1500);
+    } catch {}
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={cn(base, sizes[size])}
+      title="Enter an address or connect"
+      aria-label="Reveal your relics"
+    >
+      Reveal your relics
+    </button>
   );
 }
