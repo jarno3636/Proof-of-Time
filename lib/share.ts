@@ -72,7 +72,7 @@ function normEmbeds(embeds?: string | string[]): string[] {
   return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
 }
 
-/* ---------- Prefer mini link in Warpcast ---------- */
+/* ---------- Prefer mini link in Warpcast (path rewrite), not for text ---------- */
 export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = {}) {
   const canonical = safeUrl(webUrl);
   if (!canonical) return "";
@@ -100,26 +100,26 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   }
 }
 
-/* ---------- Warpcast web composer URL ---------- */
+/* ---------- Warpcast web composer URL (DO NOT add URL to text) ---------- */
 export function buildWarpcastCompose({
   url = "",
   text = "",
   embeds = [],
   forceMini = false,
 }: {
-  url?: string;
+  url?: string;      // may be used for future logic; not injected into text
   text?: string;
-  embeds?: string[];
+  embeds?: string[]; // normalized to string[]
   forceMini?: boolean;
 }) {
-  const shareUrl = preferMiniUrlIfPossible(url, { forceMini }) || url;
+  // Keep text as-is; don't append the URL
+  const wcText = (text || "").trim();
+
+  // We still normalize embeds (one of them can be your miniapp link)
   const embedList = normEmbeds(embeds);
+
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
-  const wcText =
-    shareUrl && !(text || "").includes(shareUrl)
-      ? `${text} ${shareUrl}`.trim()
-      : (text || "").trim();
   if (wcText) params.set("text", wcText);
   for (const e of embedList) params.append("embeds[]", e);
   return `${base}?${params.toString()}`;
@@ -137,11 +137,8 @@ export async function shareOrCast({
   url?: string;
   forceMini?: boolean;
 }) {
-  const fullText =
-    url && !String(text).includes(url)
-      ? `${text}\n${preferMiniUrlIfPossible(url, { forceMini }) || url}`.trim()
-      : (text || "").trim();
-
+  // NEVER add URL into Farcaster text
+  const fullText = (text || "").trim();
   const embedList = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
@@ -155,8 +152,8 @@ export async function shareOrCast({
     return !!ok;
   }
 
-  // OUTSIDE WARPCAST: open web composer synchronously
-  const href = buildWarpcastCompose({ text, url, embeds: embedList, forceMini });
+  // OUTSIDE WARPCAST: open web composer; text has no URL; embeds carry the link
+  const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList, forceMini });
   try {
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
