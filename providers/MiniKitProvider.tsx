@@ -1,6 +1,13 @@
 // providers/MiniKitProvider.tsx
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 /**
  * Unified Farcaster Mini App provider that:
@@ -9,165 +16,238 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
  * - Works in Warpcast (frame/mini) and has a dev fallback in normal browsers
  */
 
-const FarcasterContext = createContext(null)
+/* ----------------- Local types (minimal) ----------------- */
+type RawUser = {
+  fid?: number | null;
+  username?: string | null;
+  displayName?: string | null;
+  display_name?: string | null;
+  pfpUrl?: string | null;
+  pfp_url?: string | null;
+  custodyAddress?: string | null;
+  custody_address?: string | null;
+};
 
-function normalizeUser(raw) {
-  if (!raw) return null
+type CtxLike =
+  | { user?: RawUser; requesterUser?: RawUser }
+  | RawUser
+  | null
+  | undefined;
+
+type MiniSdkLike = {
+  actions?: {
+    signIn?: () => Promise<
+      | { isError?: false; data?: RawUser | { user?: RawUser } }
+      | { isError: true; error?: { message?: string } }
+    >;
+    logout?: () => Promise<void> | void;
+  };
+  context?:
+    | (() => Promise<CtxLike> | CtxLike)
+    | Promise<CtxLike>
+    | CtxLike;
+};
+
+type FCUser = {
+  fid: number | null;
+  username: string | null;
+  displayName: string | null;
+  pfpUrl: string | null;
+  custodyAddress: string | null;
+};
+
+type FarcasterContextValue = {
+  user: FCUser | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  isFarcasterEnvironment: boolean;
+  signIn: () => Promise<FCUser>;
+  logout: () => Promise<void> | void;
+  refresh: () => Promise<FCUser | null>;
+};
+
+/* ----------------- Context ----------------- */
+const FarcasterContext = createContext<FarcasterContextValue | null>(null);
+
+/* ----------------- Helpers ----------------- */
+function normalizeUser(raw: CtxLike): FCUser | null {
+  if (!raw) return null;
   // Try common shapes coming from different SDK versions
-  const u = raw.user || raw.requesterUser || raw
-  if (!u) return null
+  const u =
+    (raw as any).user ||
+    (raw as any).requesterUser ||
+    (raw as RawUser);
+
+  if (!u) return null;
+
   return {
     fid: u.fid ?? null,
     username: u.username ?? null,
-    displayName: u.displayName ?? u.display_name ?? null,
-    pfpUrl: u.pfpUrl ?? u.pfp_url ?? null,
-    custodyAddress: u.custodyAddress ?? u.custody_address ?? null,
-  }
+    displayName: (u as any).displayName ?? (u as any).display_name ?? null,
+    pfpUrl: (u as any).pfpUrl ?? (u as any).pfp_url ?? null,
+    custodyAddress:
+      (u as any).custodyAddress ?? (u as any).custody_address ?? null,
+  };
 }
 
-function detectFarcasterEnv() {
-  if (typeof window === 'undefined') return false
+function detectFarcasterEnv(): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    const inIframe = window.parent !== window
+    const inIframe = window.parent !== window;
     // Common mini paths or query hints
     const inMiniPath =
-      window.location.pathname.startsWith('/mini') ||
-      window.location.search.includes('frame') ||
-      window.location.search.includes('fcframe')
+      window.location.pathname.startsWith("/mini") ||
+      window.location.search.includes("frame") ||
+      window.location.search.includes("fcframe");
     // If Warpcast injects globals in the future, add detection here
-    return inIframe || inMiniPath
+    return inIframe || inMiniPath;
   } catch {
-    return false
+    return false;
   }
 }
 
-export function FarcasterProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [isFarcasterEnvironment, setIsFarcasterEnvironment] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+/* ----------------- Provider ----------------- */
+export function FarcasterProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<FCUser | null>(null);
+  const [isFarcasterEnvironment, setIsFarcasterEnvironment] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Hold an sdk instance (client-only) without creating it on the server
-  const [sdkRef, setSdkRef] = useState(null)
+  const [sdkRef, setSdkRef] = useState<MiniSdkLike | null>(null);
 
   useEffect(() => {
-    let active = true
+    let active = true;
 
     async function init() {
-      setIsLoading(true)
-      setError(null)
+      setIsLoading(true);
+      setError(null);
 
-      const inFarcaster = detectFarcasterEnv()
-      setIsFarcasterEnvironment(inFarcaster)
+      const inFarcaster = detectFarcasterEnv();
+      setIsFarcasterEnvironment(inFarcaster);
 
       if (!inFarcaster) {
         // Dev/browser fallback user for local testing
         if (active) {
           setUser({
             fid: 1,
-            username: 'dev-user',
-            displayName: 'Developer',
-            pfpUrl: '/default.png',
-            custodyAddress: '0x0000000000000000000000000000000000000000',
-          })
-          setIsLoading(false)
+            username: "dev-user",
+            displayName: "Developer",
+            pfpUrl: "/default.png",
+            custodyAddress:
+              "0x0000000000000000000000000000000000000000",
+          });
+          setIsLoading(false);
         }
-        return
+        return;
       }
 
       try {
-        const mod = await import('@farcaster/miniapp-sdk')
-        const MiniAppSDK = mod?.MiniAppSDK || mod?.default
-        if (!MiniAppSDK) throw new Error('MiniAppSDK export not found')
+        const mod: any = await import("@farcaster/miniapp-sdk");
+        const MiniAppSDK = mod?.MiniAppSDK || mod?.default;
+        if (!MiniAppSDK) throw new Error("MiniAppSDK export not found");
 
-        const sdk = new MiniAppSDK()
-        setSdkRef(sdk)
+        const sdk: MiniSdkLike = new MiniAppSDK();
+        setSdkRef(sdk);
 
         // Some versions expose `context` as a Promise, some as a function.
         const ctx =
-          typeof sdk.context === 'function' ? await sdk.context() : await sdk.context
-        const normalized = normalizeUser(ctx)
-        if (active) setUser(normalized)
-      } catch (e) {
+          typeof sdk.context === "function"
+            ? await (sdk.context as () => Promise<CtxLike> | CtxLike)()
+            : await (sdk.context as Promise<CtxLike> | CtxLike);
+
+        const normalized = normalizeUser(ctx);
+        if (active) setUser(normalized);
+      } catch (e: any) {
         if (active) {
           // Non-fatal: permit app to run with a dev fallback
-          setError(e?.message || 'Farcaster SDK initialization failed')
+          setError(e?.message || "Farcaster SDK initialization failed");
           setUser({
             fid: 1,
-            username: 'dev-user',
-            displayName: 'Developer',
-            pfpUrl: '/default.png',
-            custodyAddress: '0x0000000000000000000000000000000000000000',
-          })
+            username: "dev-user",
+            displayName: "Developer",
+            pfpUrl: "/default.png",
+            custodyAddress:
+              "0x0000000000000000000000000000000000000000",
+          });
         }
       } finally {
-        if (active) setIsLoading(false)
+        if (active) setIsLoading(false);
       }
     }
 
-    init()
+    void init();
     return () => {
-      active = false
-    }
-  }, [])
+      active = false;
+    };
+  }, []);
 
-  const signIn = async () => {
+  const signIn = async (): Promise<FCUser> => {
     if (!isFarcasterEnvironment) {
       // Dev/browser mock sign-in
-      const mock = {
+      const mock: FCUser = {
         fid: Math.floor(Math.random() * 100000) + 2,
         username: `user${Math.floor(Math.random() * 10000)}`,
-        displayName: 'Test User',
-        pfpUrl: '/default.png',
-        custodyAddress: `0x${Math.random().toString(16).slice(2).padEnd(40, '0').slice(0, 40)}`,
+        displayName: "Test User",
+        pfpUrl: "/default.png",
+        custodyAddress: `0x${Math.random()
+          .toString(16)
+          .slice(2)
+          .padEnd(40, "0")
+          .slice(0, 40)}`,
+      };
+      setUser(mock);
+      return mock;
+    }
+    try {
+      if (!sdkRef) throw new Error("Farcaster SDK not ready");
+      const res = await sdkRef?.actions?.signIn?.();
+      if ((res as any)?.isError) {
+        throw new Error(
+          (res as any)?.error?.message || "Sign in failed"
+        );
       }
-      setUser(mock)
-      return mock
+      const normalized = normalizeUser((res as any)?.data) as FCUser;
+      setUser(normalized);
+      return normalized;
+    } catch (e: any) {
+      setError(e?.message || "Sign in failed");
+      throw e;
     }
-    try {
-      if (!sdkRef) throw new Error('Farcaster SDK not ready')
-      const res = await sdkRef?.actions?.signIn?.()
-      if (res?.isError) throw new Error(res?.error?.message || 'Sign in failed')
-      const normalized = normalizeUser(res?.data)
-      setUser(normalized)
-      return normalized
-    } catch (e) {
-      setError(e?.message || 'Sign in failed')
-      throw e
-    }
-  }
+  };
 
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     if (!isFarcasterEnvironment) {
-      setUser(null)
-      return
+      setUser(null);
+      return;
     }
     try {
-      await sdkRef?.actions?.logout?.()
+      await sdkRef?.actions?.logout?.();
     } catch {
       // best effort; don't throw from logout
     } finally {
-      setUser(null)
+      setUser(null);
     }
-  }
+  };
 
-  const refresh = async () => {
-    if (!isFarcasterEnvironment) return
+  const refresh = async (): Promise<FCUser | null> => {
+    if (!isFarcasterEnvironment) return null;
     try {
       const ctx =
-        typeof sdkRef?.context === 'function'
-          ? await sdkRef.context()
-          : await sdkRef?.context
-      const normalized = normalizeUser(ctx)
-      setUser(normalized)
-      return normalized
-    } catch (e) {
-      setError(e?.message || 'Failed to refresh Farcaster context')
-      return null
+        typeof sdkRef?.context === "function"
+          ? await (sdkRef.context as () => Promise<CtxLike> | CtxLike)()
+          : await (sdkRef?.context as Promise<CtxLike> | CtxLike);
+      const normalized = normalizeUser(ctx);
+      setUser(normalized);
+      return normalized;
+    } catch (e: any) {
+      setError(e?.message || "Failed to refresh Farcaster context");
+      return null;
     }
-  }
+  };
 
-  const value = useMemo(
+  const value = useMemo<FarcasterContextValue>(
     () => ({
       user,
       isAuthenticated: !!user,
@@ -179,17 +259,22 @@ export function FarcasterProvider({ children }) {
       refresh,
     }),
     [user, isLoading, error, isFarcasterEnvironment]
-  )
+  );
 
-  return <FarcasterContext.Provider value={value}>{children}</FarcasterContext.Provider>
+  return (
+    <FarcasterContext.Provider value={value}>
+      {children}
+    </FarcasterContext.Provider>
+  );
 }
 
-export function useFarcaster() {
-  const ctx = useContext(FarcasterContext)
+/* ----------------- Hook ----------------- */
+export function useFarcaster(): FarcasterContextValue {
+  const ctx = useContext(FarcasterContext);
   if (!ctx) {
-    throw new Error('useFarcaster must be used within a FarcasterProvider')
+    throw new Error("useFarcaster must be used within a FarcasterProvider");
   }
-  return ctx
+  return ctx;
 }
 
-export default FarcasterProvider
+export default FarcasterProvider;
