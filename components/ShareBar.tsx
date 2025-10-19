@@ -39,7 +39,7 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-/* ---------- NEW: use .png OG route for embeds ---------- */
+/* ---------- use .png OG route for embeds ---------- */
 function buildOgUrl(siteOrigin: string, list: Token[]): string {
   const top = list.slice(0, 4); // keep URL short
   const qp = new URLSearchParams();
@@ -51,8 +51,8 @@ function buildOgUrl(siteOrigin: string, list: Token[]): string {
     qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
     if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  // 👇 note the .png endpoint
-  return `${siteOrigin.replace(/\\/$/, "")}/api/og/relic.png?${qp.toString()}`;
+  // NOTE: single backslash to escape the slash in the regex
+  return `${siteOrigin.replace(/\/$/, "")}/api/og/relic.png?${qp.toString()}`;
 }
 
 export default function ShareBar({
