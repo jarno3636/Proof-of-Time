@@ -1,17 +1,15 @@
-"use client";
-
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
-import HomeShareBar from "@/components/HomeShareBar";
-import { useAccount } from "wagmi";
+import RevealRelicsButton from "@/components/RevealRelicsButton"; // ⬅️ new client button
 
-const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
+const HomeShareBar = dynamic(() => import("@/components/HomeShareBar"), { ssr: false });
+const RelicLegend  = dynamic(() => import("@/components/RelicLegend"),  { ssr: false });
 
-/* ---------- Stable absolute site URL ---------- */
+/* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env;
+  if (env) return env; // e.g. https://proof-of-time.xyz
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
@@ -45,10 +43,7 @@ export const metadata: Metadata = {
   },
 };
 
-/* ---------- Page ---------- */
 export default function Home() {
-  const { address } = useAccount();
-
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
@@ -65,24 +60,9 @@ export default function Home() {
         {/* Share the app CTA */}
         <HomeShareBar />
 
-        {/* Gold “Reveal your relics” button */}
-        <div className="mt-4">
-          {address ? (
-            <a
-              href={`/relic/${address}`}
-              className="inline-flex items-center gap-2 rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition"
-            >
-              Reveal your relics
-            </a>
-          ) : (
-            <a
-              href="/relic/0x0000000000000000000000000000000000000000"
-              className="inline-flex items-center gap-2 rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition"
-              title="Connect wallet to view your relics"
-            >
-              Reveal your relics
-            </a>
-          )}
+        {/* Gold “Reveal your relics” button (now under the share section) */}
+        <div className="mt-5">
+          <RevealRelicsButton />
         </div>
       </section>
 
@@ -114,7 +94,6 @@ export default function Home() {
   );
 }
 
-/* ---------- Helper ---------- */
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5">
