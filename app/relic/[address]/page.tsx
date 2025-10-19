@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import Nav from "@/components/Nav";              // ← add this
+import { useRouter } from "next/navigation";
+import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
 import ShareBar from "@/components/ShareBar";
 
@@ -23,10 +24,33 @@ async function getRelics(address: string) {
   return (await r.json()) as { address: string; tokens: ApiToken[] };
 }
 
+function isHexAddress(s: string) {
+  return /^0x[a-fA-F0-9]{40}$/.test(s.trim());
+}
+
 export default function Page({ params }: { params: { address: string } }) {
+  const router = useRouter();
   const { address: connected } = useAccount();
   const targetAddr = useMemo(() => params.address, [params.address]);
 
+  // ---- NEW: address switcher controls ----
+  const [addrInput, setAddrInput] = useState<string>(targetAddr || "");
+  const normalizedInput = useMemo(() => addrInput.trim(), [addrInput]);
+  const inputValid = useMemo(() => isHexAddress(normalizedInput), [normalizedInput]);
+
+  const goToAddress = useCallback(
+    (addr: string) => {
+      if (!addr) return;
+      router.push(`/relic/${addr.toLowerCase()}`);
+    },
+    [router]
+  );
+
+  const useConnected = useCallback(() => {
+    if (connected) goToAddress(connected);
+  }, [connected, goToAddress]);
+
+  // ---- existing altar logic ----
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,10 +109,49 @@ export default function Page({ params }: { params: { address: string } }) {
 
   return (
     <>
-      {/* Site nav (brand link takes you home) */}
       <Nav />
 
       <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
+        {/* ---- NEW: Address switcher row ---- */}
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-center">
+            <div>
+              <label htmlFor="addr" className="text-xs text-zinc-400">
+                View any altar by address (0x…)
+              </label>
+              <input
+                id="addr"
+                value={addrInput}
+                onChange={(e) => setAddrInput(e.target.value)}
+                placeholder="0xabc…"
+                className="mt-1 w-full rounded-xl bg-zinc-900/60 border border-white/10 px-4 py-3 outline-none focus:border-[#BBA46A] transition"
+              />
+              {!inputValid && normalizedInput.length > 0 && (
+                <div className="mt-1 text-xs text-red-300">Enter a valid 0x address</div>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button
+                onClick={() => inputValid && goToAddress(normalizedInput)}
+                disabled={!inputValid}
+                className="rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Reveal altar by address"
+              >
+                Reveal with address
+              </button>
+
+              <button
+                onClick={useConnected}
+                disabled={!connected}
+                className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-3 font-semibold text-[#0b0e14] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title={connected ? "Use connected wallet" : "Connect wallet to use this"}
+              >
+                {connected ? "Use connected wallet" : "Connect wallet first"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Header: title + CTA */}
         <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
           <div>
