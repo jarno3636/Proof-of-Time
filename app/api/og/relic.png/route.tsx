@@ -3,7 +3,6 @@ import { ImageResponse } from "next/og";
 import React from "react";
 
 export const runtime = "edge";
-// ensure always dynamic (no static file assumptions)
 export const revalidate = 0;
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,7 @@ type Row = { s: string; d: string; ns: string; t?: string };
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
-  const title = searchParams.get("title") || "⟡ Relics Revealed";
+  const title = searchParams.get("title") || "Relics Revealed"; // keep simple title to avoid rare glyph issues
 
   const items: Row[] = [];
   for (let i = 1; i <= 4; i++) {
@@ -64,7 +63,8 @@ export async function GET(req: Request) {
     </div>
   );
 
-  const image = new ImageResponse(
+  // Return ImageResponse directly (DON'T wrap in new Response(...))
+  return new ImageResponse(
     (
       <div
         style={{
@@ -134,17 +134,6 @@ export async function GET(req: Request) {
         </div>
       </div>
     ),
-    { width, height }
+    { width, height } // content-type is set automatically to image/png
   );
-
-  // Force correct headers (some clients rely on this)
-  return new Response(image.body, {
-    status: 200,
-    headers: {
-      "Content-Type": "image/png",
-      "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": 'inline; filename="relic.png"',
-    },
-  });
 }
