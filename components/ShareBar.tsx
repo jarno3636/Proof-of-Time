@@ -30,7 +30,8 @@ const lineFor = (t: Token) => {
   return `• $${t.symbol} — ${t.days}d (${badge})`;
 };
 
-const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
+const safeTrim = (s: string, cap = 320) =>
+  s.length <= cap ? s : s.slice(0, cap - 1) + "…";
 
 const buildText = (list: Token[], cap?: number) => {
   const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
@@ -38,20 +39,20 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-/* ---------- NEW: build OG image URL for embeds ---------- */
+/* ---------- NEW: use .png OG route for embeds ---------- */
 function buildOgUrl(siteOrigin: string, list: Token[]): string {
-  const top = list.slice(0, 4); // keep URL tidy
+  const top = list.slice(0, 4); // keep URL short
   const qp = new URLSearchParams();
   qp.set("title", titleLine(top));
   top.forEach((t, i) => {
     const n = i + 1;
     qp.set(`s${n}`, t.symbol);
     qp.set(`d${n}`, String(t.days));
-    // nsN: "1" means never-sold; otherwise put streak number
     qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
     if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  return `${siteOrigin}/api/og/relic?${qp.toString()}`;
+  // 👇 note the .png endpoint
+  return `${siteOrigin.replace(/\\/$/, "")}/api/og/relic.png?${qp.toString()}`;
 }
 
 export default function ShareBar({
@@ -82,14 +83,19 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  /* ---------- Farcaster (unchanged logic, just add image embed) ---------- */
+  /* ---------- Farcaster ---------- */
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
     const url = site + "/";
     const imageURL = buildOgUrl(site, tokens);
-    const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    const ok = await shareOrCast({
+      text,
+      url,
+      embeds: [imageURL, FARCASTER_MINIAPP_LINK],
+    });
+    if (!ok)
+      setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [tokens, site]);
 
   const shareSelectedFC = useCallback(async () => {
@@ -98,11 +104,16 @@ export default function ShareBar({
     const text = buildText(selected, 320);
     const url = site + "/";
     const imageURL = buildOgUrl(site, selected);
-    const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    const ok = await shareOrCast({
+      text,
+      url,
+      embeds: [imageURL, FARCASTER_MINIAPP_LINK],
+    });
+    if (!ok)
+      setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [selected, site]);
 
-  /* ---------- X / Twitter (unchanged) ---------- */
+  /* ---------- X / Twitter ---------- */
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
@@ -111,7 +122,11 @@ export default function ShareBar({
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
+
+  const shareAllX = useCallback(
+    () => openXShare(buildText(tokens, 280), site + "/"),
+    [tokens, site, openXShare]
+  );
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     openXShare(buildText(selected, 280), site + "/");
