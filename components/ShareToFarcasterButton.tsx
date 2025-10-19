@@ -1,19 +1,34 @@
-// components/ShareToFarcasterButton.tsx
 "use client";
 
 import * as React from "react";
-import { composeCast, isInFarcasterEnv } from "@/lib/miniapp";
+import { composeCast } from "@/lib/miniapp";
 import { buildWarpcastCompose, openShareWindow } from "@/lib/share";
+
+// Local mini-env detect (no import from miniapp.ts needed)
+function isInFarcasterEnv(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const hasGlobal =
+      !!(window as any).farcaster ||
+      !!(window as any).Farcaster?.mini ||
+      !!(window as any).Farcaster?.mini?.sdk;
+    const inIframe = window.self !== window.top;
+    const ua = typeof navigator !== "undefined" ? /Warpcast|Farcaster/i.test(navigator.userAgent || "") : false;
+    return hasGlobal || ua || inIframe;
+  } catch {
+    return false;
+  }
+}
 
 type Props = {
   text: string;
   embeds?: string[];
-  url?: string;               // optional: link to include after the text
+  url?: string;
   className?: string;
   disabled?: boolean;
   title?: string;
   children?: React.ReactNode;
-  onDone?: (via: "sdk" | "web" | "noop") => void; // which path was used
+  onDone?: (via: "sdk" | "web" | "noop") => void;
 };
 
 export default function ShareToFarcasterButton({
@@ -29,23 +44,15 @@ export default function ShareToFarcasterButton({
   const onClick = React.useCallback(async () => {
     const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
 
-    // 1) Try composing in-app via SDKs (frame-sdk or miniapp-sdk)
     const ok = await composeCast({ text: fullText, embeds });
-    if (ok) {
-      onDone?.("sdk");
-      return;
-    }
+    if (ok) { onDone?.("sdk"); return; }
 
-    // 2) INSIDE Warpcast: DO NOT open web composer (would show download interstitial)
     if (isInFarcasterEnv()) {
-      try {
-        (window as any)?.__toast?.("Couldn’t open composer in-app. Update Warpcast and try again.");
-      } catch {}
+      try { (window as any)?.__toast?.("Couldn’t open composer in-app. Update Warpcast and try again."); } catch {}
       onDone?.("noop");
       return;
     }
 
-    // 3) Browser / dapp webviews: fallback to Warpcast web composer
     const href = buildWarpcastCompose({ text, url, embeds });
     await openShareWindow(href);
     onDone?.("web");
