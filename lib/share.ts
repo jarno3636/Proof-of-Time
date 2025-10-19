@@ -1,31 +1,64 @@
 // lib/share.ts
-import {
-  composeCast,
-  composeCastEverywhere,
-  openInMini,
-  safeUrl,
-  siteOrigin,
-  isInFarcasterEnv, // ⬅ key fix: detect Warpcast webview
-} from "./miniapp";
+// Self-contained sharing helpers with NO extra deps on lib/miniapp.ts
 
+import { composeCast, openInMini } from "./miniapp";
+
+/* ---------- Config ---------- */
 const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
   "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
-const MINI_BASE =
-  process.env.NEXT_PUBLIC_FC_MINIAPP_URL /* optional custom host for mini */ ||
-  FARCASTER_MINIAPP_LINK;
+/* ---------- URL + env helpers (local) ---------- */
+function siteOrigin(): string {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (env) return env.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel}`;
+  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  return "http://localhost:3000";
+}
 
-/** helpers */
-function isWarpcastUA() {
-  return typeof navigator !== "undefined" && /Warpcast|FarcasterMini/i.test(navigator.userAgent || "");
+function safeUrl(input?: string | URL | null): string {
+  if (!input) return "";
+  try {
+    const s = String(input);
+    if (/^https?:\/\//i.test(s)) return new URL(s).toString();
+    return new URL(s, siteOrigin()).toString();
+  } catch {
+    return "";
+  }
 }
-function isMiniRuntime() {
-  return typeof window !== "undefined" && !!(window as any).Farcaster?.mini;
+
+function isWarpcastUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
 }
-function isWarpcastEnv() {
-  return isMiniRuntime() || isWarpcastUA();
+
+function looksLikeMiniPath(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const p = window.location?.pathname || "";
+    const q = window.location?.search || "";
+    return p.startsWith("/mini") || /(?:\?|&)fcframe=|(?:\?|&)frame=/.test(q);
+  } catch {
+    return false;
+  }
 }
+
+export function isInFarcasterEnv(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const hasGlobal =
+      !!(window as any).farcaster ||
+      !!(window as any).Farcaster?.mini ||
+      !!(window as any).Farcaster?.mini?.sdk;
+    const inIframe = window.self !== window.top;
+    return hasGlobal || isWarpcastUA() || looksLikeMiniPath() || inIframe;
+  } catch {
+    return false;
+  }
+}
+
 function isSameOrigin(urlA: string, urlB: string) {
   try {
     const a = new URL(urlA);
@@ -35,6 +68,7 @@ function isSameOrigin(urlA: string, urlB: string) {
     return false;
   }
 }
+
 function normEmbeds(embeds?: string | string[]) {
   if (!embeds) return [] as string[];
   const list = Array.isArray(embeds) ? embeds : [embeds];
@@ -44,28 +78,25 @@ function normEmbeds(embeds?: string | string[]) {
     .filter((u) => /^https?:\/\//i.test(u));
 }
 
-/**
- * If we’re inside Warpcast, rewrite same-origin links to the Mini directory link,
- * so opening stays in-app. Otherwise keep canonical web URL.
- */
+/* ---------- Prefer mini link in Warpcast ---------- */
 export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = {}) {
   const canonical = safeUrl(webUrl);
   if (!canonical) return "";
 
-  // Don’t rewrite compose/deep links
   if (/^warpcast:|^farcaster:/i.test(canonical)) return canonical;
   if (/^https:\/\/warpcast\.com\/~\/compose/i.test(canonical)) return canonical;
 
-  const inWarpcast = isWarpcastEnv() || forceMini;
-  if (!MINI_BASE || !inWarpcast) return canonical;
+  const inWarpcast = isInFarcasterEnv() || forceMini;
+  const MINI_BASE =
+    process.env.NEXT_PUBLIC_FC_MINIAPP_URL /* optional custom host for mini */ ||
+    FARCASTER_MINIAPP_LINK;
 
-  // Only rewrite if link is same origin as our site
+  if (!MINI_BASE || !inWarpcast) return canonical;
   if (!isSameOrigin(canonical, siteOrigin())) return canonical;
 
   try {
     const u = new URL(canonical);
     const mini = new URL(MINI_BASE);
-
     const normalizedPath = u.pathname.startsWith("/") ? u.pathname : `/${u.pathname}`;
     mini.pathname = (mini.pathname.replace(/\/$/, "") + normalizedPath).replace(/\/{2,}/g, "/");
     mini.search = u.search;
@@ -76,7 +107,7 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   }
 }
 
-/** Warpcast web composer */
+/* ---------- Warpcast web composer URL ---------- */
 export function buildWarpcastCompose({
   url = "",
   text = "",
@@ -90,41 +121,25 @@ export function buildWarpcastCompose({
 }) {
   const shareUrl = preferMiniUrlIfPossible(url, { forceMini }) || url;
   const embedList = normEmbeds(embeds);
-
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
-  const wcText =
-    shareUrl && !(text || "").includes(shareUrl)
-      ? `${text} ${shareUrl}`.trim()
-      : (text || "").trim();
+  const wcText = shareUrl && !(text || "").includes(shareUrl) ? `${text} ${shareUrl}`.trim() : (text || "").trim();
   if (wcText) params.set("text", wcText);
   for (const e of embedList) params.append("embeds[]", e);
   return `${base}?${params.toString()}`;
 }
 
-/** Open a share window.
- *  IMPORTANT: inside Warpcast, DO NOT open `~/compose` (causes download interstitial).
- */
+/* ---------- Open share window (outside Warpcast) ---------- */
 export async function openShareWindow(href: string) {
   if (!href) return;
-
   if (isInFarcasterEnv()) {
-    // No-op in Warpcast — we rely solely on SDK compose in-app.
-    // Optional: toast for UX clarity
-    try {
-      (window as any)?.__toast?.("Update Warpcast to share from this view.");
-    } catch {}
+    try { (window as any)?.__toast?.("Update Warpcast to share from this view."); } catch {}
     return;
   }
-
-  // Outside Warpcast: open as usual
   await openInMini(href); // falls back to same-tab when not in mini
 }
 
-/** High-level: try in-app compose first.
- *  - Inside Warpcast: SDK only (no web-composer fallback, prevents download page).
- *  - Outside: SDK → web composer.
- */
+/* ---------- Main: try SDK compose, else web composer ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
@@ -136,7 +151,6 @@ export async function shareOrCast({
   url?: string;
   forceMini?: boolean;
 }) {
-  // Prefer in-app compose (no download-page trap)
   const fullText =
     url && !String(text).includes(url)
       ? `${text}\n${preferMiniUrlIfPossible(url, { forceMini }) || url}`.trim()
@@ -146,11 +160,9 @@ export async function shareOrCast({
 
   if (isInFarcasterEnv()) {
     const ok = await composeCast({ text: fullText, embeds: embedList });
-    // If it fails, don't open web composer. Caller can show a message if needed.
     return ok;
   }
 
-  // Fallback path for browser/dapp webviews
   const ok = await composeCast({ text: fullText, embeds: embedList });
   if (ok) return true;
 
