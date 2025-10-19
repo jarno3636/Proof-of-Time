@@ -17,7 +17,7 @@ const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
   "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
-/* ---------- helpers ---------- */
+/* ---------- helpers (text) ---------- */
 const titleLine = (list: Token[]) =>
   list.length === 1
     ? "Relic Revealed"
@@ -39,12 +39,10 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-// ASCII-only for the OG image title (renderer-safe)
+/* ---------- optional: share page for X (kept) ---------- */
 const cleanTitle = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
-
-/* Build the sharable PAGE url that carries params for the OG image */
 function buildShareUrl(siteOrigin: string, list: Token[]): string {
-  const top = list.slice(0, 4); // keep URL short
+  const top = list.slice(0, 4);
   const qp = new URLSearchParams();
   qp.set("title", cleanTitle(titleLine(top)));
   top.forEach((t, i) => {
@@ -54,8 +52,20 @@ function buildShareUrl(siteOrigin: string, list: Token[]): string {
     qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
     if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  // Share the PAGE, not the image—Warpcast will read its OG tags
   return `${siteOrigin.replace(/\/$/, "")}/share?${qp.toString()}`;
+}
+
+/* ---------- NEW: render+upload to PNG, return public image URL ---------- */
+async function getShareImage(siteOrigin: string, list: Token[]): Promise<string> {
+  const title = titleLine(list);
+  const resp = await fetch(`${siteOrigin.replace(/\/$/, "")}/api/relic-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, tokens: list }),
+  });
+  if (!resp.ok) throw new Error("image render failed");
+  const { url } = (await resp.json()) as { url: string };
+  return url; // public https .png on Vercel Blob
 }
 
 export default function ShareBar({
@@ -86,33 +96,35 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  /* ---------- Farcaster ---------- */
+  /* ---------- Farcaster (image embed first, then MiniApp) ---------- */
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const url = buildShareUrl(site, tokens); // <— page with OG image
-    const ok = await shareOrCast({
-      text,
-      url,
-      embeds: [url, FARCASTER_MINIAPP_LINK], // page first so it unfurls
-    });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    const url = site + "/"; // your site as link in composer
+    try {
+      const imageURL = await getShareImage(site, tokens);
+      const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
+      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    } catch {
+      setMsg("Rendering image failed. Try again.");
+    }
   }, [tokens, site]);
 
   const shareSelectedFC = useCallback(async () => {
     if (!selected.length) return;
     setMsg(null);
     const text = buildText(selected, 320);
-    const url = buildShareUrl(site, selected);
-    const ok = await shareOrCast({
-      text,
-      url,
-      embeds: [url, FARCASTER_MINIAPP_LINK],
-    });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    const url = site + "/";
+    try {
+      const imageURL = await getShareImage(site, selected);
+      const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
+      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    } catch {
+      setMsg("Rendering image failed. Try again.");
+    }
   }, [selected, site]);
 
-  /* ---------- X / Twitter ---------- */
+  /* ---------- X / Twitter (kept: share page URL) ---------- */
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
