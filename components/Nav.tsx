@@ -1,10 +1,16 @@
+// components/Nav.tsx
 "use client";
 
 import Link from "next/link";
 import { useMemo } from "react";
 import { useAccount, useConnect, useConnectors } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { isFarcasterUA } from "@/lib/miniapp";
+
+// ⬇️ Local UA helper (no dependency on lib/miniapp.ts)
+function isFarcasterUA(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
+}
 
 function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
