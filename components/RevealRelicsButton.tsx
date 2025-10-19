@@ -5,7 +5,7 @@ import { useCallback } from "react";
 import cn from "clsx";
 
 /* ---------- Helpers ---------- */
-function isEthAddress(s: string) {
+function isEthAddress(s: string): s is `0x${string}` {
   return /^0x[a-fA-F0-9]{40}$/.test(s.trim());
 }
 
@@ -23,27 +23,30 @@ export default function RevealRelicsButton({
 }) {
   const { address } = useAccount();
 
-  const go = useCallback(async () => {
+  const go = useCallback(() => {
     console.log("RevealRelicsButton pressed, address:", address);
 
-    let target = address;
+    let target: `0x${string}` | null = address ?? null;
+
     if (!target) {
-      const input = window.prompt("Enter a wallet address (0x…):", "");
-      if (!input) return;
-      if (!isEthAddress(input)) {
-        alert("That doesn’t look like a valid 0x address.");
+      const input = window.prompt("Enter a wallet address (0x…):", "") || "";
+      const trimmed = input.trim();
+      if (!isEthAddress(trimmed)) {
+        if (trimmed) alert("That doesn’t look like a valid 0x address.");
         return;
       }
-      target = input.trim();
+      target = trimmed; // ← now typed as `0x${string}` thanks to the type guard
     }
+
+    const href = `/relic/${target}`;
 
     // Handle navigation differently inside wallet webviews
     if (isInWalletWebView()) {
       console.log("Detected wallet webview → using direct assign()");
-      window.location.assign(`/relic/${target}`);
+      window.location.assign(href);
     } else {
       console.log("Standard browser → using href");
-      window.location.href = `/relic/${target}`;
+      window.location.href = href;
     }
   }, [address]);
 
@@ -59,7 +62,7 @@ export default function RevealRelicsButton({
   return (
     <button
       onClick={go}
-      onTouchStart={() => console.log("touchstart detected")} // ensures tap capture on mobile
+      onTouchStart={() => console.log("touchstart detected")}
       className={cn(base, sizes[size])}
       title={address ? "Open your altar" : "Enter an address or connect"}
       aria-label="Reveal your relics"
