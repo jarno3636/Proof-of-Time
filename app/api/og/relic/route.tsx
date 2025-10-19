@@ -1,5 +1,6 @@
-// app/api/og/relic/route.ts
-import { ImageResponse } from "next/server";
+// app/api/og/relic/route.tsx
+import { ImageResponse } from "next/og"; // ← use next/og for OG images
+import React from "react";               // ← safe to include for TS/JSX parsing
 
 export const runtime = "edge";
 export const alt = "Proof of Time";
