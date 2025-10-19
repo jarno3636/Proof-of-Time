@@ -19,6 +19,17 @@ const nextConfig = {
       },
     ];
   },
+
+  // Fix optional/node-only deps that some wallet/logging libs pull in
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@react-native-async-storage/async-storage": false,
+      "pino-pretty": false,
+    };
+    return config;
+  },
 };
 
 module.exports = nextConfig;
