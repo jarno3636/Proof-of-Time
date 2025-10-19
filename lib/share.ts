@@ -1,6 +1,4 @@
 // lib/share.ts
-// Self-contained sharing helpers with NO extra deps on lib/miniapp.ts
-
 import { composeCast, openInMini } from "./miniapp";
 
 /* ---------- Config ---------- */
@@ -69,13 +67,12 @@ function isSameOrigin(urlA: string, urlB: string) {
   }
 }
 
-function normEmbeds(embeds?: string | string[]) {
-  if (!embeds) return [] as string[];
+function normEmbeds(embeds?: string | string[]): string[] {
+  if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
   return list
     .map((e) => safeUrl(e))
-    .filter(Boolean)
-    .filter((u) => /^https?:\/\//i.test(u));
+    .filter(Boolean) as string[]; // keep only truthy urls
 }
 
 /* ---------- Prefer mini link in Warpcast ---------- */
@@ -88,8 +85,7 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
 
   const inWarpcast = isInFarcasterEnv() || forceMini;
   const MINI_BASE =
-    process.env.NEXT_PUBLIC_FC_MINIAPP_URL /* optional custom host for mini */ ||
-    FARCASTER_MINIAPP_LINK;
+    process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
 
   if (!MINI_BASE || !inWarpcast) return canonical;
   if (!isSameOrigin(canonical, siteOrigin())) return canonical;
@@ -116,14 +112,17 @@ export function buildWarpcastCompose({
 }: {
   url?: string;
   text?: string;
-  embeds?: string[];
+  embeds?: string[];           // normalized to string[]
   forceMini?: boolean;
 }) {
   const shareUrl = preferMiniUrlIfPossible(url, { forceMini }) || url;
   const embedList = normEmbeds(embeds);
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
-  const wcText = shareUrl && !(text || "").includes(shareUrl) ? `${text} ${shareUrl}`.trim() : (text || "").trim();
+  const wcText =
+    shareUrl && !(text || "").includes(shareUrl)
+      ? `${text} ${shareUrl}`.trim()
+      : (text || "").trim();
   if (wcText) params.set("text", wcText);
   for (const e of embedList) params.append("embeds[]", e);
   return `${base}?${params.toString()}`;
@@ -133,10 +132,12 @@ export function buildWarpcastCompose({
 export async function openShareWindow(href: string) {
   if (!href) return;
   if (isInFarcasterEnv()) {
-    try { (window as any)?.__toast?.("Update Warpcast to share from this view."); } catch {}
+    try {
+      (window as any).__toast?.("Update Warpcast to share from this view.");
+    } catch {}
     return;
   }
-  await openInMini(href); // falls back to same-tab when not in mini
+  await openInMini(href);
 }
 
 /* ---------- Main: try SDK compose, else web composer ---------- */
@@ -147,7 +148,7 @@ export async function shareOrCast({
   forceMini = false,
 }: {
   text?: string;
-  embeds?: string[];
+  embeds?: string[];           // normalized to string[]
   url?: string;
   forceMini?: boolean;
 }) {
@@ -159,14 +160,21 @@ export async function shareOrCast({
   const embedList = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
-    const ok = await composeCast({ text: fullText, embeds: embedList });
+    const ok = await composeCast({
+      text: fullText,
+      // Compose can be typed to never[] in some SDK versions; cast for safety.
+      embeds: embedList as unknown as any[],
+    });
     return ok;
   }
 
-  const ok = await composeCast({ text: fullText, embeds: embedList });
+  const ok = await composeCast({
+    text: fullText,
+    embeds: embedList as unknown as any[],
+  });
   if (ok) return true;
 
-  const href = buildWarpcastCompose({ text, url, embeds, forceMini });
+  const href = buildWarpcastCompose({ text, url, embeds: embedList, forceMini });
   await openShareWindow(href);
   return true;
 }
