@@ -1,7 +1,7 @@
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
-import RevealRelicsButton from "@/components/RevealRelicsButton"; // ⬅️ new client button
+import RevealRelicsButton from "@/components/RevealRelicsButton";
 
 const HomeShareBar = dynamic(() => import("@/components/HomeShareBar"), { ssr: false });
 const RelicLegend  = dynamic(() => import("@/components/RelicLegend"),  { ssr: false });
@@ -52,17 +52,20 @@ export default function Home() {
         <h1 className="text-5xl md:text-6xl font-black tracking-tight">
           Claim your<span className="text-zinc-400"> time on chain.</span>
         </h1>
-        <p className="mt-4 max-w-2xl text-zinc-400">
+
+        {/* Big gold CTA just under the headline */}
+        <div className="mt-6">
+          <RevealRelicsButton size="lg" />
+        </div>
+
+        <p className="mt-6 max-w-2xl text-zinc-400">
           Proof of Time reveals your longest-held tokens on Base — turning
           consistent holders into living records of patience, loyalty, and belief.
         </p>
 
         {/* Share the app CTA */}
-        <HomeShareBar />
-
-        {/* Gold “Reveal your relics” button (now under the share section) */}
-        <div className="mt-5">
-          <RevealRelicsButton />
+        <div className="mt-6">
+          <HomeShareBar />
         </div>
       </section>
 
