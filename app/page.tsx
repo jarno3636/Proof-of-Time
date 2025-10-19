@@ -1,26 +1,24 @@
+"use client";
+
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
-import HomeShareBar from "@/components/HomeShareBar"; // ← NEW
+import HomeShareBar from "@/components/HomeShareBar";
+import { useAccount } from "wagmi";
 
 const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
-/* ---------- Stable absolute site URL (server-safe) ---------- */
+/* ---------- Stable absolute site URL ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env; // e.g. https://proof-of-time.xyz
+  if (env) return env;
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
 }
 const site = getSiteUrl();
 
-/**
- * This makes `/` itself a Frame:
- * - Warpcast will fetch `/` and see these meta tags
- * - Button 1 opens the app (link)
- * - POST URL points to /api/frame so you can add interactive steps later
- */
+/* ---------- Metadata ---------- */
 export const metadata: Metadata = {
   title: "Proof of Time",
   description: "Your longest-held tokens on Base. Time > hype.",
@@ -47,7 +45,10 @@ export const metadata: Metadata = {
   },
 };
 
+/* ---------- Page ---------- */
 export default function Home() {
+  const { address } = useAccount();
+
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
@@ -61,8 +62,28 @@ export default function Home() {
           consistent holders into living records of patience, loyalty, and belief.
         </p>
 
-        {/* 🔥 New: share the app CTA */}
+        {/* Share the app CTA */}
         <HomeShareBar />
+
+        {/* Gold “Reveal your relics” button */}
+        <div className="mt-4">
+          {address ? (
+            <a
+              href={`/relic/${address}`}
+              className="inline-flex items-center gap-2 rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition"
+            >
+              Reveal your relics
+            </a>
+          ) : (
+            <a
+              href="/relic/0x0000000000000000000000000000000000000000"
+              className="inline-flex items-center gap-2 rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition"
+              title="Connect wallet to view your relics"
+            >
+              Reveal your relics
+            </a>
+          )}
+        </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-6 pb-16">
@@ -82,7 +103,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* NEW: scrollable guide */}
       <section className="mx-auto max-w-6xl px-6 pb-24">
         <RelicLegend />
         <p className="mt-10 text-sm text-zinc-500 max-w-3xl">
@@ -94,6 +114,7 @@ export default function Home() {
   );
 }
 
+/* ---------- Helper ---------- */
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5">
