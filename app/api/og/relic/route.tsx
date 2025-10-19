@@ -1,10 +1,12 @@
 // app/api/og/relic/route.tsx
-import { ImageResponse } from "next/og"; // ← use next/og for OG images
-import React from "react";               // ← safe to include for TS/JSX parsing
+import { ImageResponse } from "next/og";
+import React from "react";
 
 export const runtime = "edge";
-export const alt = "Proof of Time";
-export const contentType = "image/png";
+// Optional: ensure it never gets statically cached by accident
+export const revalidate = 0;
+
+type Row = { s: string; d: string; ns: string; t?: string };
 
 // GET /api/og/relic?title=...&s1=TOBY&d1=123&ns1=1&t1=Gold&...
 export async function GET(req: Request) {
@@ -12,7 +14,6 @@ export async function GET(req: Request) {
 
   const title = searchParams.get("title") || "⟡ Relics Revealed";
 
-  type Row = { s: string; d: string; ns: string; t?: string };
   const items: Row[] = [];
   for (let i = 1; i <= 4; i++) {
     const s = searchParams.get(`s${i}`);
@@ -38,7 +39,9 @@ export async function GET(req: Request) {
         border: "1px solid rgba(255,255,255,0.12)",
       }}
     >
-      <div style={{ fontSize: 34, fontWeight: 800 }}>${item.s}</div>
+      <div style={{ fontSize: 34, fontWeight: 800 }}>
+        {`$${item.s}`}
+      </div>
       <div style={{ opacity: 0.9 }}>•</div>
       <div style={{ fontSize: 28 }}>{item.d}d</div>
       <div style={{ opacity: 0.9 }}>•</div>
@@ -132,6 +135,12 @@ export async function GET(req: Request) {
         </div>
       </div>
     ),
-    { width, height }
+    {
+      width,
+      height,
+      // contentType is auto-set to image/png by ImageResponse,
+      // but you can force it via headers if desired:
+      // headers: { "content-type": "image/png" },
+    }
   );
 }
