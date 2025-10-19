@@ -1,29 +1,23 @@
-// components/Nav.tsx
 "use client";
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { useAccount, useConnect, useConnectors } from "wagmi";
+import { useConnect, useConnectors } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
-// ⬇️ Local UA helper (no dependency on lib/miniapp.ts)
+// Local UA helper
 function isFarcasterUA(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Warpcast|Farcaster|FarcasterMini/i.test(navigator.userAgent || "");
 }
 
-function short(addr: string) {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
 export default function Nav() {
-  const { address } = useAccount();
   const { connectAsync } = useConnect();
   const connectors = useConnectors();
 
   const insideFarcaster = useMemo(isFarcasterUA, []);
 
-  // Helper: find Farcaster mini-connector
+  // Prefer Farcaster connector inside Warpcast if present
   const farcasterConn = useMemo(
     () =>
       connectors.find(
@@ -48,17 +42,8 @@ export default function Nav() {
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
-        {/* Links */}
+        {/* Right actions */}
         <div className="ml-auto flex items-center gap-3">
-          {address && (
-            <Link
-              href={`/relic/${address}`}
-              className="text-sm text-zinc-300 hover:text-white"
-            >
-              Your Altar
-            </Link>
-          )}
-
           {/* Wallet connect button */}
           <ConnectButton.Custom>
             {({
@@ -74,13 +59,13 @@ export default function Nav() {
               const connected = ready && account && chain;
 
               const handleClick = async () => {
-                // Inside Warpcast, prefer the Farcaster connector (no popups)
+                // Inside Warpcast, prefer Farcaster connector (no popups)
                 if (insideFarcaster && farcasterConn) {
                   try {
                     await connectAsync({ connector: farcasterConn });
                     return;
                   } catch {
-                    // fallback to modal
+                    // fall back to modal
                   }
                 }
                 openConnectModal?.();
@@ -120,7 +105,7 @@ export default function Nav() {
                     className={baseBtn}
                     type="button"
                   >
-                    {account?.displayName || short(account?.address!)}
+                    {account?.displayName}
                   </button>
                 </div>
               );
