@@ -131,15 +131,28 @@ export function buildWarpcastCompose({
 /* ---------- Open share window (outside Warpcast) ---------- */
 export async function openShareWindow(href: string) {
   if (!href) return;
+
+  // Inside Warpcast: DO NOT open web composer (it shows a download interstitial)
   if (isInFarcasterEnv()) {
     try {
-      (window as any).__toast?.("Update Warpcast to share from this view.");
+      (window as any).__toast?.("Couldn’t open composer in-app. Update Warpcast and try again.");
     } catch {}
     return;
   }
-  await openInMini(href);
-}
 
+  // Outside Warpcast: try popup/new tab first, then hard navigate
+  try {
+    const w = window.open(href, "_blank", "noopener,noreferrer");
+    if (w) return;
+  } catch {
+    // ignore and fall through
+  }
+  try {
+    window.location.href = href;
+  } catch {
+    // last resort: do nothing
+  }
+}
 /* ---------- Main: try SDK compose, else web composer ---------- */
 export async function shareOrCast({
   text = "",
