@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { put } from "@vercel/blob";
 import type { NextRequest } from "next/server";
+import React from "react"; // <-- needed when using JSX in a route
 
 export const runtime = "edge";
 
@@ -15,7 +16,7 @@ type Token = {
 type Body = {
   title: string;
   tokens: Token[];
-  kind?: "relics" | "altar"; // optional flag if you want layout tweaks later
+  kind?: "relics" | "altar";
 };
 
 const size = { width: 1200, height: 630 };
@@ -72,7 +73,6 @@ function Card({ title, rows }: { title: string; rows: Token[] }) {
         justifyContent: "space-between",
         padding: 48,
         color: "white",
-        // solid color first for stability; we can reintroduce gradients later
         backgroundColor: "#150022",
       }}
     >
@@ -145,16 +145,12 @@ export async function POST(req: NextRequest) {
     symbol: clean(t.symbol),
   }));
 
-  // 1) Render to PNG stream
+  // 1) Render PNG
   const image = new ImageResponse(<Card title={title} rows={rows} />, size);
-
-  // 2) Read bytes
   const arrayBuffer = await image.arrayBuffer();
 
-  // 3) Create a deterministic-ish key (you can hash tokens for cache hits)
+  // 2) Upload to Vercel Blob (public)
   const key = `relics/${Date.now()}_${title.replace(/\s+/g, "_")}.png`;
-
-  // 4) Upload to Vercel Blob (public URL)
   const { url } = await put(key, arrayBuffer, {
     access: "public",
     contentType: "image/png",
