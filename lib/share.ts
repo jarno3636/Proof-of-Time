@@ -72,7 +72,7 @@ function normEmbeds(embeds?: string | string[]): string[] {
   const list = Array.isArray(embeds) ? embeds : [embeds];
   return list
     .map((e) => safeUrl(e))
-    .filter(Boolean) as string[]; // keep only truthy urls
+    .filter(Boolean) as string[];
 }
 
 /* ---------- Prefer mini link in Warpcast ---------- */
@@ -159,19 +159,18 @@ export async function shareOrCast({
 
   const embedList = normEmbeds(embeds);
 
+  // Locally widen composeCast signature to accept string[] embeds
+  const typedComposeCast = composeCast as unknown as (args: {
+    text?: string;
+    embeds?: string[];
+  }) => Promise<boolean>;
+
   if (isInFarcasterEnv()) {
-    const ok = await composeCast({
-      text: fullText,
-      // Compose can be typed to never[] in some SDK versions; cast for safety.
-      embeds: embedList as unknown as any[],
-    });
+    const ok = await typedComposeCast({ text: fullText, embeds: embedList });
     return ok;
   }
 
-  const ok = await composeCast({
-    text: fullText,
-    embeds: embedList as unknown as any[],
-  });
+  const ok = await typedComposeCast({ text: fullText, embeds: embedList });
   if (ok) return true;
 
   const href = buildWarpcastCompose({ text, url, embeds: embedList, forceMini });
