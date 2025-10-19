@@ -1,4 +1,3 @@
-// app/relic/[address]/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -33,7 +32,7 @@ export default function Page({ params }: { params: { address: string } }) {
   const { address: connected } = useAccount();
   const targetAddr = useMemo(() => params.address, [params.address]);
 
-  // ---- NEW: address switcher controls ----
+  // Address switcher
   const [addrInput, setAddrInput] = useState<string>(targetAddr || "");
   const normalizedInput = useMemo(() => addrInput.trim(), [addrInput]);
   const inputValid = useMemo(() => isHexAddress(normalizedInput), [normalizedInput]);
@@ -47,10 +46,12 @@ export default function Page({ params }: { params: { address: string } }) {
   );
 
   const useConnected = useCallback(() => {
-    if (connected) goToAddress(connected);
-  }, [connected, goToAddress]);
+    if (connected && connected.toLowerCase() !== targetAddr.toLowerCase()) {
+      goToAddress(connected);
+    }
+  }, [connected, targetAddr, goToAddress]);
 
-  // ---- existing altar logic ----
+  // Altar state
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,9 +113,9 @@ export default function Page({ params }: { params: { address: string } }) {
       <Nav />
 
       <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
-        {/* ---- NEW: Address switcher row ---- */}
+        {/* Address switcher (simple + clear) */}
         <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-center">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-end">
             <div>
               <label htmlFor="addr" className="text-xs text-zinc-400">
                 View any altar by address (0x…)
@@ -129,26 +130,34 @@ export default function Page({ params }: { params: { address: string } }) {
               {!inputValid && normalizedInput.length > 0 && (
                 <div className="mt-1 text-xs text-red-300">Enter a valid 0x address</div>
               )}
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-              <button
-                onClick={() => inputValid && goToAddress(normalizedInput)}
-                disabled={!inputValid}
-                className="rounded-2xl border border-[#BBA46A] px-4 py-3 font-semibold text-[#BBA46A] hover:bg-[#BBA46A]/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Reveal altar by address"
-              >
-                Reveal with address
-              </button>
 
-              <button
-                onClick={useConnected}
-                disabled={!connected}
-                className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-3 font-semibold text-[#0b0e14] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                title={connected ? "Use connected wallet" : "Connect wallet to use this"}
-              >
-                {connected ? "Use connected wallet" : "Connect wallet first"}
-              </button>
+              {/* Small helper notes */}
+              <p className="mt-2 text-[11px] text-zinc-400">
+                Tip: You can paste any Base address to view its relics.{" "}
+                {connected && connected.toLowerCase() !== targetAddr.toLowerCase() && (
+                  <>
+                    Or{" "}
+                    <button
+                      type="button"
+                      onClick={useConnected}
+                      className="underline decoration-dotted hover:text-white"
+                    >
+                      use your connected wallet
+                    </button>
+                    .
+                  </>
+                )}
+              </p>
             </div>
+
+            <button
+              onClick={() => inputValid && goToAddress(normalizedInput)}
+              disabled={!inputValid}
+              className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-5 py-3 font-semibold text-[#0b0e14] transition disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Reveal altar by address"
+            >
+              Reveal
+            </button>
           </div>
         </div>
 
@@ -175,7 +184,7 @@ export default function Page({ params }: { params: { address: string } }) {
               {computing ? "Verifying…" : "Verify your will to hold"}
             </button>
             <div className="mt-1 text-[11px] italic text-zinc-400">
-              * Refreshes altar once complete
+              * Recomputes and refreshes your altar
             </div>
           </div>
         </header>
