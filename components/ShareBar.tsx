@@ -39,11 +39,11 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-// Keep image title ASCII-only to avoid OG engine font/glyph issues
+// ASCII-only for the OG image title (renderer-safe)
 const cleanTitle = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
 
-/* ---------- build .png OG URL for embeds ---------- */
-function buildOgUrl(siteOrigin: string, list: Token[]): string {
+/* Build the sharable PAGE url that carries params for the OG image */
+function buildShareUrl(siteOrigin: string, list: Token[]): string {
   const top = list.slice(0, 4); // keep URL short
   const qp = new URLSearchParams();
   qp.set("title", cleanTitle(titleLine(top)));
@@ -54,7 +54,8 @@ function buildOgUrl(siteOrigin: string, list: Token[]): string {
     qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
     if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  return `${siteOrigin.replace(/\/$/, "")}/api/og/relic.png?${qp.toString()}`;
+  // Share the PAGE, not the image—Warpcast will read its OG tags
+  return `${siteOrigin.replace(/\/$/, "")}/share?${qp.toString()}`;
 }
 
 export default function ShareBar({
@@ -89,30 +90,26 @@ export default function ShareBar({
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const url = site + "/";
-    const imageURL = buildOgUrl(site, tokens);
+    const url = buildShareUrl(site, tokens); // <— page with OG image
     const ok = await shareOrCast({
       text,
       url,
-      embeds: [imageURL, FARCASTER_MINIAPP_LINK],
+      embeds: [url, FARCASTER_MINIAPP_LINK], // page first so it unfurls
     });
-    if (!ok)
-      setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [tokens, site]);
 
   const shareSelectedFC = useCallback(async () => {
     if (!selected.length) return;
     setMsg(null);
     const text = buildText(selected, 320);
-    const url = site + "/";
-    const imageURL = buildOgUrl(site, selected);
+    const url = buildShareUrl(site, selected);
     const ok = await shareOrCast({
       text,
       url,
-      embeds: [imageURL, FARCASTER_MINIAPP_LINK],
+      embeds: [url, FARCASTER_MINIAPP_LINK],
     });
-    if (!ok)
-      setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [selected, site]);
 
   /* ---------- X / Twitter ---------- */
@@ -126,12 +123,12 @@ export default function ShareBar({
   }, []);
 
   const shareAllX = useCallback(
-    () => openXShare(buildText(tokens, 280), site + "/"),
+    () => openXShare(buildText(tokens, 280), buildShareUrl(site, tokens)),
     [tokens, site, openXShare]
   );
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), site + "/");
+    openXShare(buildText(selected, 280), buildShareUrl(site, selected));
   }, [selected, site, openXShare]);
 
   return (
