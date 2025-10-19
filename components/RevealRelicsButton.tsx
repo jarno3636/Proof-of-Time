@@ -1,7 +1,8 @@
 "use client";
 
 import { useAccount } from "wagmi";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import cn from "clsx";
 
 /* ---------- Helpers ---------- */
@@ -9,10 +10,52 @@ function isEthAddress(s: string): s is `0x${string}` {
   return /^0x[a-fA-F0-9]{40}$/.test(s.trim());
 }
 
+function getSiteOrigin() {
+  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  return process.env.NEXT_PUBLIC_SITE_URL || "";
+}
+
 function isInWalletWebView() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
-  return /BaseWallet|Coinbase|TrustWallet|MetaMask/i.test(ua);
+  // Cover Base, Coinbase, Trust, MetaMask, Rainbow, etc.
+  return /BaseWallet|BaseBrowser|Coinbase|CBBrowser|TrustWallet|MetaMask|Rainbow|Phantom/i.test(ua);
+}
+
+/* Navigate very defensively for wallet in-app browsers */
+function hardNavigate(absUrl: string) {
+  // 1) Try the most reliable first
+  try {
+    window.location.assign(absUrl);
+    return;
+  } catch {}
+
+  // 2) Fallbacks
+  try {
+    window.location.href = absUrl;
+  } catch {}
+
+  try {
+    window.location.replace(absUrl);
+  } catch {}
+
+  try {
+    window.open(absUrl, "_self", "noopener,noreferrer");
+  } catch {}
+
+  // 3) Last-ditch: programmatic anchor click
+  try {
+    const a = document.createElement("a");
+    a.href = absUrl;
+    a.rel = "noreferrer noopener";
+    a.target = "_self";
+    // Make it keyboard/touch accessible for some webviews
+    a.style.position = "absolute";
+    a.style.left = "-9999px";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 2000);
+  } catch {}
 }
 
 /* ---------- Component ---------- */
@@ -21,11 +64,12 @@ export default function RevealRelicsButton({
 }: {
   size?: "md" | "lg";
 }) {
+  const router = useRouter();
   const { address } = useAccount();
+  const origin = useMemo(getSiteOrigin, []);
 
-  const go = useCallback(() => {
-    console.log("RevealRelicsButton pressed, address:", address);
-
+  const go = useCallback(async () => {
+    // 1) Decide target address
     let target: `0x${string}` | null = address ?? null;
 
     if (!target) {
@@ -35,20 +79,27 @@ export default function RevealRelicsButton({
         if (trimmed) alert("That doesn’t look like a valid 0x address.");
         return;
       }
-      target = trimmed; // ← now typed as `0x${string}` thanks to the type guard
+      target = trimmed;
     }
 
-    const href = `/relic/${target}`;
+    // 2) Build an ABSOLUTE URL — many webviews dislike relative paths
+    const abs = `${origin || ""}/relic/${target}`;
 
-    // Handle navigation differently inside wallet webviews
-    if (isInWalletWebView()) {
-      console.log("Detected wallet webview → using direct assign()");
-      window.location.assign(href);
-    } else {
-      console.log("Standard browser → using href");
-      window.location.href = href;
+    // 3) Try client router first (nice SPA nav), then hard fallbacks for webviews
+    try {
+      // router.push works in most normal browsers
+      router.push(abs);
+      // In some webviews push may noop; add a micro-fallback timer
+      setTimeout(() => {
+        if (document.visibilityState !== "hidden") {
+          // If page didn't navigate, force it
+          hardNavigate(abs);
+        }
+      }, 60);
+    } catch {
+      hardNavigate(abs);
     }
-  }, [address]);
+  }, [address, origin, router]);
 
   /* ---------- Styles ---------- */
   const base =
@@ -62,7 +113,15 @@ export default function RevealRelicsButton({
   return (
     <button
       onClick={go}
-      onTouchStart={() => console.log("touchstart detected")}
+      onTouchEnd={(e) => {
+        // Some in-app browsers only fire touch events reliably
+        // Prevent duplicate navigation when both fire
+        if (isInWalletWebView()) {
+          e.preventDefault();
+          e.stopPropagation();
+          go();
+        }
+      }}
       className={cn(base, sizes[size])}
       title={address ? "Open your altar" : "Enter an address or connect"}
       aria-label="Reveal your relics"
