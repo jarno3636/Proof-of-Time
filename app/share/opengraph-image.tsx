@@ -1,16 +1,17 @@
-// app/share/opengraph-image.tsx
 import { ImageResponse } from "next/og";
 import React from "react";
 
+// Required for OG image routes
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// These exports are VALID (and recommended) on opengraph-image.* files:
+// These two hints make the renderer more stable in some environments
 export const contentType = "image/png";
-export const size = { width: 1200, height: 630 }; // Next will use these if you omit in ImageResponse
+export const size = { width: 1200, height: 630 };
 
-type Row = { s: string; d: string; ns: string; t?: string };
+const W = 1200;
+const H = 630;
 
 export default function Image({
   searchParams,
@@ -20,135 +21,24 @@ export default function Image({
   const clean = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
   const title = clean((searchParams.title as string) || "Relics Revealed");
 
-  const rows: Row[] = [];
-  for (let i = 1; i <= 4; i++) {
-    const s = searchParams[`s${i}`];
-    const d = searchParams[`d${i}`];
-    const ns = searchParams[`ns${i}`];
-    const t = searchParams[`t${i}`];
-    if (typeof s === "string" && typeof d === "string" && typeof ns === "string") {
-      rows.push({
-        s: clean(s),
-        d: clean(d),
-        ns: clean(ns),
-        t: typeof t === "string" ? clean(t) : undefined,
-      });
-    }
-  }
-
-  const Row = (it: Row, i: number) => (
-    <div
-      key={i}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        padding: "12px 16px",
-        borderRadius: 12,
-        backgroundColor: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.1)",
-      }}
-    >
-      <div style={{ fontSize: 34, fontWeight: 800 }}>{`$${it.s}`}</div>
-      <div style={{ opacity: 0.7 }}>|</div>
-      <div style={{ fontSize: 28 }}>{it.d}d</div>
-      <div style={{ opacity: 0.7 }}>|</div>
-      <div style={{ fontSize: 22, opacity: 0.9 }}>
-        {it.ns === "1" ? "never sold" : `no-sell ${it.ns}d`}
-      </div>
-      {it.t && (
-        <div
-          style={{
-            marginLeft: 8,
-            padding: "2px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,0.2)",
-            backgroundColor: "rgba(255,255,255,0.08)",
-            fontSize: 18,
-          }}
-        >
-          {it.t}
-        </div>
-      )}
-    </div>
-  );
-
+  // Keep it ultra-minimal first (we’ll add rows back once this renders)
   return new ImageResponse(
-    <div
-      style={{
-        width: size.width,
-        height: size.height,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        padding: 48,
-        color: "white",
-        backgroundColor: "#150022", // solid color = crash-proof
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.16)",
-              fontSize: 32,
-              fontWeight: 700,
-            }}
-          >
-            PoT
-          </div>
-          <div style={{ fontSize: 46, fontWeight: 800 }}>{title}</div>
-        </div>
-        <div style={{ fontSize: 20, opacity: 0.8 }}>{"Time > hype - #ProofOfTime"}</div>
-      </div>
-
-      {/* Body */}
-      <div style={{ display: "grid", gap: 14 }}>
-        {rows.length
-          ? rows.map(Row)
-          : [
-              { s: "TOBY", d: "123", ns: "1", t: "Gold" },
-              { s: "USDC", d: "88", ns: "30" },
-              { s: "WETH", d: "55", ns: "5", t: "Silver" },
-            ].map(Row)}
-      </div>
-
-      {/* Footer */}
+    (
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          opacity: 0.85,
-          fontSize: 18,
+          width: W,
+          height: H,
+          backgroundColor: "#150022", // solid color = safest
+          color: "#ffffff",
+          fontSize: 56,
+          fontWeight: 800,
+          paddingLeft: 48,
+          paddingTop: 72,
         }}
       >
-        <div>proofoftime.vercel.app</div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {["Bronze", "Silver", "Gold", "Platinum", "Obsidian"].map((t) => (
-            <div
-              key={t}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.16)",
-                backgroundColor: "rgba(255,255,255,0.06)",
-                fontSize: 16,
-              }}
-            >
-              {t}
-            </div>
-          ))}
-        </div>
+        {title}
       </div>
-    </div>,
-    { width: size.width, height: size.height }
+    ),
+    { width: W, height: H }
   );
 }
