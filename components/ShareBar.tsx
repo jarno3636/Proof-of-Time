@@ -39,12 +39,12 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-/* ---------- optional: share page for X (kept) ---------- */
-const cleanTitle = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
+/* ---------- share page for X (kept) ---------- */
+const cleanAscii = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
 function buildShareUrl(siteOrigin: string, list: Token[]): string {
   const top = list.slice(0, 4);
   const qp = new URLSearchParams();
-  qp.set("title", cleanTitle(titleLine(top)));
+  qp.set("title", cleanAscii(titleLine(top)));
   top.forEach((t, i) => {
     const n = i + 1;
     qp.set(`s${n}`, t.symbol);
@@ -55,17 +55,19 @@ function buildShareUrl(siteOrigin: string, list: Token[]): string {
   return `${siteOrigin.replace(/\/$/, "")}/share?${qp.toString()}`;
 }
 
-/* ---------- NEW: render+upload to PNG, return public image URL ---------- */
-async function getShareImage(siteOrigin: string, list: Token[]): Promise<string> {
-  const title = titleLine(list);
-  const resp = await fetch(`${siteOrigin.replace(/\/$/, "")}/api/relic-image`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, tokens: list }),
+/* ---------- NEW: build direct PNG URL for Farcaster ---------- */
+function buildDirectPngUrl(siteOrigin: string, list: Token[]): string {
+  const top = list.slice(0, 4);
+  const qp = new URLSearchParams();
+  qp.set("title", cleanAscii(titleLine(top)));
+  top.forEach((t, i) => {
+    const n = i + 1;
+    qp.set(`s${n}`, t.symbol);
+    qp.set(`d${n}`, String(t.days));
+    qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
+    if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  if (!resp.ok) throw new Error("image render failed");
-  const { url } = (await resp.json()) as { url: string };
-  return url; // public https .png on Vercel Blob
+  return `${siteOrigin.replace(/\/$/, "")}/api/relic-image.png?${qp.toString()}`;
 }
 
 export default function ShareBar({
@@ -96,17 +98,17 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  /* ---------- Farcaster (image embed first, then MiniApp) ---------- */
+  /* ---------- Farcaster (direct PNG first, then MiniApp) ---------- */
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const url = site + "/"; // your site as link in composer
+    const url = site + "/"; // your site as the cast link
     try {
-      const imageURL = await getShareImage(site, tokens);
+      const imageURL = buildDirectPngUrl(site, tokens);
       const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
       if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
     } catch {
-      setMsg("Rendering image failed. Try again.");
+      setMsg("Could not prepare the image URL.");
     }
   }, [tokens, site]);
 
@@ -116,11 +118,11 @@ export default function ShareBar({
     const text = buildText(selected, 320);
     const url = site + "/";
     try {
-      const imageURL = await getShareImage(site, selected);
+      const imageURL = buildDirectPngUrl(site, selected);
       const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
       if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
     } catch {
-      setMsg("Rendering image failed. Try again.");
+      setMsg("Could not prepare the image URL.");
     }
   }, [selected, site]);
 
