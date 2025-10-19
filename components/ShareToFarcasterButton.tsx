@@ -13,7 +13,10 @@ function isInFarcasterEnv(): boolean {
       !!(window as any).Farcaster?.mini ||
       !!(window as any).Farcaster?.mini?.sdk;
     const inIframe = window.self !== window.top;
-    const ua = typeof navigator !== "undefined" ? /Warpcast|Farcaster/i.test(navigator.userAgent || "") : false;
+    const ua =
+      typeof navigator !== "undefined"
+        ? /Warpcast|Farcaster/i.test(navigator.userAgent || "")
+        : false;
     return hasGlobal || ua || inIframe;
   } catch {
     return false;
@@ -22,7 +25,7 @@ function isInFarcasterEnv(): boolean {
 
 type Props = {
   text: string;
-  embeds?: string[];
+  embeds?: string[] | readonly string[];
   url?: string;
   className?: string;
   disabled?: boolean;
@@ -44,16 +47,29 @@ export default function ShareToFarcasterButton({
   const onClick = React.useCallback(async () => {
     const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
 
-    const ok = await composeCast({ text: fullText, embeds });
-    if (ok) { onDone?.("sdk"); return; }
+    // Normalize embeds to a mutable string[] and cast for the SDK call
+    const embedList = Array.isArray(embeds) ? embeds.map(String) : [];
+    const ok = await composeCast({
+      text: fullText,
+      // Some SDK typings narrow to never[]; cast to any[] for compatibility
+      embeds: embedList as unknown as any[],
+    });
+    if (ok) {
+      onDone?.("sdk");
+      return;
+    }
 
     if (isInFarcasterEnv()) {
-      try { (window as any)?.__toast?.("Couldn’t open composer in-app. Update Warpcast and try again."); } catch {}
+      try {
+        (window as any)?.__toast?.(
+          "Couldn’t open composer in-app. Update Warpcast and try again."
+        );
+      } catch {}
       onDone?.("noop");
       return;
     }
 
-    const href = buildWarpcastCompose({ text, url, embeds });
+    const href = buildWarpcastCompose({ text, url, embeds: embedList });
     await openShareWindow(href);
     onDone?.("web");
   }, [text, url, embeds, onDone]);
