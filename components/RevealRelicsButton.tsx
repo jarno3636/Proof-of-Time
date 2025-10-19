@@ -1,11 +1,12 @@
 "use client";
 
-import { useAccount } from "wagmi";
 import cn from "clsx";
 
 /* ---------- Helpers ---------- */
 function getSiteOrigin() {
-  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
   return process.env.NEXT_PUBLIC_SITE_URL || "";
 }
 
@@ -15,8 +16,10 @@ export default function RevealRelicsButton({
 }: {
   size?: "md" | "lg";
 }) {
-  const { address } = useAccount();
   const origin = getSiteOrigin();
+
+  // Always direct to the relic landing page
+  const hrefAbs = `${origin}/relic`;
 
   // Styles
   const base =
@@ -27,36 +30,18 @@ export default function RevealRelicsButton({
     lg: "px-7 py-4 text-lg md:text-xl",
   };
 
-  // Choose destination
-  const hrefAbs = address
-    ? `${origin}/relic/${address}`
-    : `${origin}/relic`; // fallback landing page for unconnected users
-
   return (
     <div className="flex items-center gap-3">
-      {/* Main button */}
       <a
         href={hrefAbs}
         target="_self"
         rel="noreferrer noopener"
         className={cn(base, sizes[size])}
-        title={address ? "Open your altar" : "Go to relics page"}
+        title="Go to your relic altar"
         aria-label="Reveal your relics"
       >
         Reveal your relics
       </a>
-
-      {/* Optional helper link for connected users */}
-      {address && (
-        <a
-          href={hrefAbs}
-          target="_self"
-          rel="noreferrer noopener"
-          className="ml-1 text-sm underline text-[#BBA46A]/80 hover:text-[#BBA46A]"
-        >
-          Open as link
-        </a>
-      )}
     </div>
   );
 }
