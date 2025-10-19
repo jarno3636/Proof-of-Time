@@ -11,14 +11,16 @@ type Row = { s: string; d: string; ns: string; t?: string };
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
-  const clean = (s: string) => s.replace(/[^\x20-\x7E]/g, ""); // ASCII only
+  // Keep text ASCII-only to avoid font/glyph rendering issues in OG engine
+  const clean = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
+
   const title = clean(searchParams.get("title") || "Relics Revealed");
 
   const items: Row[] = [];
   for (let i = 1; i <= 4; i++) {
     const s = searchParams.get(`s${i}`);
     const d = searchParams.get(`d${i}`);
-    const ns = searchParams.get(`ns${i}`); // "1" = never sold; else streak
+    const ns = searchParams.get(`ns${i}`); // "1" = never sold; else streak days
     const t = searchParams.get(`t${i}`) || undefined;
     if (s && d && ns) items.push({ s: clean(s), d: clean(d), ns: clean(ns), t: t ? clean(t) : undefined });
   }
@@ -96,7 +98,9 @@ export async function GET(req: Request) {
           </div>
           <div style={{ fontSize: 42, fontWeight: 800 }}>{title}</div>
         </div>
-        <div style={{ fontSize: 18, opacity: 0.8 }}>Time > hype • #ProofOfTime</div>
+        <div style={{ fontSize: 18, opacity: 0.8 }}>
+          {"Time > hype - #ProofOfTime"}
+        </div>
       </div>
 
       {/* Body */}
@@ -115,6 +119,6 @@ export async function GET(req: Request) {
         proofoftime.vercel.app
       </div>
     </div>,
-    { width, height }
+    { width, height } // ImageResponse sets Content-Type: image/png automatically
   );
 }
