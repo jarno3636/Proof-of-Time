@@ -17,13 +17,13 @@ const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
   "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
-/* ---------- helpers (unchanged) ---------- */
+/* ---------- helpers ---------- */
 const titleLine = (list: Token[]) =>
   list.length === 1
-    ? "⟡ Relic Revealed"
+    ? "Relic Revealed"
     : list.length <= 3
-    ? "⟡ Relics Revealed"
-    : "⟡ Proof of Time — Altar";
+    ? "Relics Revealed"
+    : "Proof of Time — Altar";
 
 const lineFor = (t: Token) => {
   const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
@@ -39,11 +39,14 @@ const buildText = (list: Token[], cap?: number) => {
   return cap ? safeTrim(out, cap) : out;
 };
 
-/* ---------- use .png OG route for embeds ---------- */
+// Keep image title ASCII-only to avoid OG engine font/glyph issues
+const cleanTitle = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
+
+/* ---------- build .png OG URL for embeds ---------- */
 function buildOgUrl(siteOrigin: string, list: Token[]): string {
   const top = list.slice(0, 4); // keep URL short
   const qp = new URLSearchParams();
-  qp.set("title", titleLine(top));
+  qp.set("title", cleanTitle(titleLine(top)));
   top.forEach((t, i) => {
     const n = i + 1;
     qp.set(`s${n}`, t.symbol);
@@ -51,7 +54,6 @@ function buildOgUrl(siteOrigin: string, list: Token[]): string {
     qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
     if (t.tier) qp.set(`t${n}`, t.tier);
   });
-  // NOTE: single backslash to escape the slash in the regex
   return `${siteOrigin.replace(/\/$/, "")}/api/og/relic.png?${qp.toString()}`;
 }
 
