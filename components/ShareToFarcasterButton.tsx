@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { composeCast } from "@/lib/miniapp";
-import { buildWarpcastCompose, openShareWindow } from "@/lib/share";
+import { buildWarpcastCompose } from "@/lib/share";
 
 // Local mini-env detect (no import from miniapp.ts needed)
 function isInFarcasterEnv(): boolean {
@@ -45,24 +45,22 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
+    // Normalize once, synchronously
     const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
-
-    // Normalize embeds to a mutable string[]
     const embedList: string[] = Array.isArray(embeds) ? embeds.map(String) : [];
 
-    // Locally widen the composeCast type to accept string[] embeds
-    const typedComposeCast = composeCast as unknown as (args: {
-      text?: string;
-      embeds?: string[];
-    }) => Promise<boolean>;
-
-    const ok = await typedComposeCast({ text: fullText, embeds: embedList });
-    if (ok) {
-      onDone?.("sdk");
-      return;
-    }
-
     if (isInFarcasterEnv()) {
+      // IN WARPCAST: try SDK compose, never open web composer
+      const typedComposeCast = composeCast as unknown as (args: {
+        text?: string;
+        embeds?: string[];
+      }) => Promise<boolean>;
+
+      const ok = await typedComposeCast({ text: fullText, embeds: embedList });
+      if (ok) {
+        onDone?.("sdk");
+        return;
+      }
       try {
         (window as any)?.__toast?.(
           "Couldn’t open composer in-app. Update Warpcast and try again."
@@ -72,9 +70,21 @@ export default function ShareToFarcasterButton({
       return;
     }
 
+    // OUTSIDE WARPCAST: open the web composer *synchronously* to keep user gesture
     const href = buildWarpcastCompose({ text, url, embeds: embedList });
-    await openShareWindow(href);
-    onDone?.("web");
+    try {
+      const w = window.open(href, "_blank", "noopener,noreferrer");
+      if (!w) window.location.href = href; // fallback if popup blocked
+      onDone?.("web");
+    } catch {
+      // last resort: same-tab navigation
+      try {
+        window.location.href = href;
+        onDone?.("web");
+      } catch {
+        onDone?.("noop");
+      }
+    }
   }, [text, url, embeds, onDone]);
 
   return (
