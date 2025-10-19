@@ -47,13 +47,16 @@ export default function ShareToFarcasterButton({
   const onClick = React.useCallback(async () => {
     const fullText = url && !text.includes(url) ? `${text}\n${url}` : text;
 
-    // Normalize embeds to a mutable string[] and cast for the SDK call
-    const embedList = Array.isArray(embeds) ? embeds.map(String) : [];
-    const ok = await composeCast({
-      text: fullText,
-      // Some SDK typings narrow to never[]; cast to any[] for compatibility
-      embeds: embedList as unknown as any[],
-    });
+    // Normalize embeds to a mutable string[]
+    const embedList: string[] = Array.isArray(embeds) ? embeds.map(String) : [];
+
+    // Locally widen the composeCast type to accept string[] embeds
+    const typedComposeCast = composeCast as unknown as (args: {
+      text?: string;
+      embeds?: string[];
+    }) => Promise<boolean>;
+
+    const ok = await typedComposeCast({ text: fullText, embeds: embedList });
     if (ok) {
       onDone?.("sdk");
       return;
