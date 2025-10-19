@@ -6,6 +6,10 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// These exports are VALID (and recommended) on opengraph-image.* files:
+export const contentType = "image/png";
+export const size = { width: 1200, height: 630 }; // Next will use these if you omit in ImageResponse
+
 type Row = { s: string; d: string; ns: string; t?: string };
 
 export default function Image({
@@ -16,14 +20,14 @@ export default function Image({
   const clean = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
   const title = clean((searchParams.title as string) || "Relics Revealed");
 
-  const items: Row[] = [];
+  const rows: Row[] = [];
   for (let i = 1; i <= 4; i++) {
     const s = searchParams[`s${i}`];
     const d = searchParams[`d${i}`];
     const ns = searchParams[`ns${i}`];
     const t = searchParams[`t${i}`];
     if (typeof s === "string" && typeof d === "string" && typeof ns === "string") {
-      items.push({
+      rows.push({
         s: clean(s),
         d: clean(d),
         ns: clean(ns),
@@ -32,10 +36,7 @@ export default function Image({
     }
   }
 
-  const width = 1200;
-  const height = 630;
-
-  const row = (it: Row, i: number) => (
+  const Row = (it: Row, i: number) => (
     <div
       key={i}
       style={{
@@ -73,83 +74,81 @@ export default function Image({
   );
 
   return new ImageResponse(
-    (
+    <div
+      style={{
+        width: size.width,
+        height: size.height,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        padding: 48,
+        color: "white",
+        backgroundColor: "#150022", // solid color = crash-proof
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: 16,
+              backgroundColor: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              fontSize: 32,
+              fontWeight: 700,
+            }}
+          >
+            PoT
+          </div>
+          <div style={{ fontSize: 46, fontWeight: 800 }}>{title}</div>
+        </div>
+        <div style={{ fontSize: 20, opacity: 0.8 }}>{"Time > hype - #ProofOfTime"}</div>
+      </div>
+
+      {/* Body */}
+      <div style={{ display: "grid", gap: 14 }}>
+        {rows.length
+          ? rows.map(Row)
+          : [
+              { s: "TOBY", d: "123", ns: "1", t: "Gold" },
+              { s: "USDC", d: "88", ns: "30" },
+              { s: "WETH", d: "55", ns: "5", t: "Silver" },
+            ].map(Row)}
+      </div>
+
+      {/* Footer */}
       <div
         style={{
-          width,
-          height,
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
           justifyContent: "space-between",
-          padding: 48,
-          color: "white",
-          backgroundColor: "#150022", // solid purple (OG-safe)
+          opacity: 0.85,
+          fontSize: 18,
         }}
       >
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div>proofoftime.vercel.app</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {["Bronze", "Silver", "Gold", "Platinum", "Obsidian"].map((t) => (
             <div
+              key={t}
               style={{
-                width: 72,
-                height: 72,
-                display: "grid",
-                placeItems: "center",
-                borderRadius: 16,
-                backgroundColor: "rgba(255,255,255,0.08)",
+                padding: "6px 12px",
+                borderRadius: 999,
                 border: "1px solid rgba(255,255,255,0.16)",
-                fontSize: 32,
-                fontWeight: 700,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                fontSize: 16,
               }}
             >
-              PoT
+              {t}
             </div>
-            <div style={{ fontSize: 46, fontWeight: 800 }}>{title}</div>
-          </div>
-          <div style={{ fontSize: 20, opacity: 0.8 }}>{"Time > hype - #ProofOfTime"}</div>
-        </div>
-
-        {/* Body */}
-        <div style={{ display: "grid", gap: 14 }}>
-          {items.length
-            ? items.map(row)
-            : [
-                { s: "TOBY", d: "123", ns: "1", t: "Gold" },
-                { s: "USDC", d: "88", ns: "30" },
-                { s: "WETH", d: "55", ns: "5", t: "Silver" },
-              ].map(row)}
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            opacity: 0.85,
-            fontSize: 18,
-          }}
-        >
-          <div>proofoftime.vercel.app</div>
-          <div style={{ display: "flex", gap: 10 }}>
-            {["Bronze", "Silver", "Gold", "Platinum", "Obsidian"].map((t) => (
-              <div
-                key={t}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  fontSize: 16,
-                }}
-              >
-                {t}
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
-    ),
-    { width, height }
+    </div>,
+    { width: size.width, height: size.height }
   );
 }
