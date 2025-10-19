@@ -34,7 +34,7 @@ export async function GET(req: Request) {
         gap: 16,
         padding: "12px 16px",
         borderRadius: 12,
-        background: "rgba(255,255,255,0.05)",
+        backgroundColor: "rgba(255,255,255,0.05)",
         border: "1px solid rgba(255,255,255,0.1)",
       }}
     >
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
             padding: "2px 10px",
             borderRadius: 999,
             border: "1px solid rgba(255,255,255,0.2)",
-            background: "rgba(255,255,255,0.08)",
+            backgroundColor: "rgba(255,255,255,0.08)",
             fontSize: 18,
           }}
         >
@@ -73,8 +73,7 @@ export async function GET(req: Request) {
           justifyContent: "space-between",
           padding: 48,
           color: "white",
-          background:
-            "linear-gradient(135deg, #111 0%, #2a004d 35%, #4b0082 100%)",
+          backgroundColor: "#150022", // solid purple tone (safe)
         }}
       >
         {/* Header */}
@@ -87,7 +86,7 @@ export async function GET(req: Request) {
                 display: "grid",
                 placeItems: "center",
                 borderRadius: 16,
-                background: "rgba(255,255,255,0.08)",
+                backgroundColor: "rgba(255,255,255,0.08)",
                 border: "1px solid rgba(255,255,255,0.16)",
                 fontSize: 32,
                 fontWeight: 700,
@@ -130,7 +129,7 @@ export async function GET(req: Request) {
                   padding: "6px 12px",
                   borderRadius: 999,
                   border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(255,255,255,0.06)",
+                  backgroundColor: "rgba(255,255,255,0.06)",
                   fontSize: 16,
                 }}
               >
