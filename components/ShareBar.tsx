@@ -17,59 +17,6 @@ const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
   "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
-/* ---------- helpers (text) ---------- */
-const titleLine = (list: Token[]) =>
-  list.length === 1
-    ? "Relic Revealed"
-    : list.length <= 3
-    ? "Relics Revealed"
-    : "Proof of Time — Altar";
-
-const lineFor = (t: Token) => {
-  const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-  return `• $${t.symbol} — ${t.days}d (${badge})`;
-};
-
-const safeTrim = (s: string, cap = 320) =>
-  s.length <= cap ? s : s.slice(0, cap - 1) + "…";
-
-const buildText = (list: Token[], cap?: number) => {
-  const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
-  const out = lines.join("\n");
-  return cap ? safeTrim(out, cap) : out;
-};
-
-/* ---------- share page for X (kept) ---------- */
-const cleanAscii = (s: string) => s.replace(/[^\x20-\x7E]/g, "");
-function buildShareUrl(siteOrigin: string, list: Token[]): string {
-  const top = list.slice(0, 4);
-  const qp = new URLSearchParams();
-  qp.set("title", cleanAscii(titleLine(top)));
-  top.forEach((t, i) => {
-    const n = i + 1;
-    qp.set(`s${n}`, t.symbol);
-    qp.set(`d${n}`, String(t.days));
-    qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
-    if (t.tier) qp.set(`t${n}`, t.tier);
-  });
-  return `${siteOrigin.replace(/\/$/, "")}/share?${qp.toString()}`;
-}
-
-/* ---------- NEW: build direct PNG URL for Farcaster ---------- */
-function buildDirectPngUrl(siteOrigin: string, list: Token[]): string {
-  const top = list.slice(0, 4);
-  const qp = new URLSearchParams();
-  qp.set("title", cleanAscii(titleLine(top)));
-  top.forEach((t, i) => {
-    const n = i + 1;
-    qp.set(`s${n}`, t.symbol);
-    qp.set(`d${n}`, String(t.days));
-    qp.set(`ns${n}`, t.never_sold ? "1" : String(t.no_sell_streak_days));
-    if (t.tier) qp.set(`t${n}`, t.tier);
-  });
-  return `${siteOrigin.replace(/\/$/, "")}/api/relic-image.png?${qp.toString()}`;
-}
-
 export default function ShareBar({
   address: _unused,
   tokens,
@@ -94,22 +41,37 @@ export default function ShareBar({
     });
   }, [tokens, selectedSymbols]);
 
+  const titleLine = (list: Token[]) =>
+    list.length === 1
+      ? "⟡ Relic Revealed"
+      : list.length <= 3
+      ? "⟡ Relics Revealed"
+      : "⟡ Proof of Time — Altar";
+
+  const lineFor = (t: Token) => {
+    const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
+    return `• $${t.symbol} — ${t.days}d (${badge})`;
+  };
+
+  const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
+
+  // ⬇️ NOTE: “See yours: …” line REMOVED
+  const buildText = (list: Token[], cap?: number) => {
+    const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
+    const out = lines.join("\n");
+    return cap ? safeTrim(out, cap) : out;
+  };
+
   const site =
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
-  /* ---------- Farcaster (direct PNG first, then MiniApp) ---------- */
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const url = site + "/"; // your site as the cast link
-    try {
-      const imageURL = buildDirectPngUrl(site, tokens);
-      const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
-      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-    } catch {
-      setMsg("Could not prepare the image URL.");
-    }
+    const url = site + "/";
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [tokens, site]);
 
   const shareSelectedFC = useCallback(async () => {
@@ -117,16 +79,11 @@ export default function ShareBar({
     setMsg(null);
     const text = buildText(selected, 320);
     const url = site + "/";
-    try {
-      const imageURL = buildDirectPngUrl(site, selected);
-      const ok = await shareOrCast({ text, url, embeds: [imageURL, FARCASTER_MINIAPP_LINK] });
-      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-    } catch {
-      setMsg("Could not prepare the image URL.");
-    }
+    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
   }, [selected, site]);
 
-  /* ---------- X / Twitter (kept: share page URL) ---------- */
+  // Optional X/Twitter
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://twitter.com/intent/tweet";
     const params = new URLSearchParams({ text });
@@ -135,14 +92,10 @@ export default function ShareBar({
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-
-  const shareAllX = useCallback(
-    () => openXShare(buildText(tokens, 280), buildShareUrl(site, tokens)),
-    [tokens, site, openXShare]
-  );
+  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), buildShareUrl(site, selected));
+    openXShare(buildText(selected, 280), site + "/");
   }, [selected, site, openXShare]);
 
   return (
