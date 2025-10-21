@@ -14,5 +14,8 @@
     "splashImageUrl": "https://proofoftime.vercel.app/splash.png",
     "splashBackgroundColor": "#0b0e14",
     "webhookUrl": "https://proofoftime.vercel.app/api/webhook"
+  },
+  "baseBuilder": {
+    "ownerAddress": "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c"
   }
 }
