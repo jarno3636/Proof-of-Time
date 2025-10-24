@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useAccount, useConnect, useConnectors } from "wagmi";
+import { useConnect, useConnectors } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 function isFarcasterUA(): boolean {
@@ -18,9 +18,12 @@ export default function Nav() {
   const [open, setOpen] = useState(false);
 
   const farcasterConn = useMemo(
-    () => connectors.find(c =>
-      c.id.toLowerCase().includes("farcaster") || c.name.toLowerCase().includes("farcaster")
-    ) || null,
+    () =>
+      connectors.find(
+        (c) =>
+          c.id.toLowerCase().includes("farcaster") ||
+          c.name.toLowerCase().includes("farcaster")
+      ) || null,
     [connectors]
   );
 
@@ -32,19 +35,24 @@ export default function Nav() {
 
   const handleConnect = async () => {
     if (insideFarcaster && farcasterConn) {
-      try { await connectAsync({ connector: farcasterConn }); } catch {}
+      try {
+        await connectAsync({ connector: farcasterConn });
+      } catch {}
     }
   };
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-black/20 bg-black/5 border-b border-white/10">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-        <Link href="/" className="text-xl font-semibold tracking-wide hover:text-[#d6c289] transition">
+        <Link
+          href="/"
+          className="text-xl font-semibold tracking-wide hover:text-[#d6c289] transition"
+        >
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
         <button
-          onClick={() => setOpen(s => !s)}
+          onClick={() => setOpen((s) => !s)}
           className="ml-2 inline-flex items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/40 hover:bg-zinc-800/50 px-3 py-2 text-sm font-semibold text-zinc-200 transition"
           aria-expanded={open}
           aria-controls="site-menu"
@@ -54,19 +62,50 @@ export default function Nav() {
 
         <div className="ml-auto">
           <ConnectButton.Custom>
-            {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted, authenticationStatus }) => {
+            {({
+              account,
+              chain,
+              openAccountModal,
+              openChainModal,
+              openConnectModal,
+              mounted,
+              authenticationStatus,
+            }) => {
               const ready = mounted && authenticationStatus !== "loading";
               const connected = ready && account && chain;
-              const onClick = async () => { await handleConnect(); openConnectModal?.(); };
+              const onClick = async () => {
+                await handleConnect();
+                openConnectModal?.();
+              };
 
               return !ready ? (
-                <button className={baseBtn} disabled aria-busy="true">Connecting…</button>
+                <button className={baseBtn} disabled aria-busy="true">
+                  Connecting…
+                </button>
               ) : !connected ? (
-                <button onClick={onClick} className={baseBtn} aria-label="Connect Wallet">Connect Wallet</button>
+                <button
+                  onClick={onClick}
+                  className={baseBtn}
+                  aria-label="Connect Wallet"
+                >
+                  Connect Wallet
+                </button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <button onClick={openChainModal} className={baseBtn + " !px-3"} type="button">{chain?.name ?? "Chain"}</button>
-                  <button onClick={openAccountModal} className={baseBtn} type="button">{account?.displayName}</button>
+                  <button
+                    onClick={openChainModal}
+                    className={baseBtn + " !px-3"}
+                    type="button"
+                  >
+                    {chain?.name ?? "Chain"}
+                  </button>
+                  <button
+                    onClick={openAccountModal}
+                    className={baseBtn}
+                    type="button"
+                  >
+                    {account?.displayName}
+                  </button>
                 </div>
               );
             }}
@@ -77,9 +116,16 @@ export default function Nav() {
       {open && (
         <div id="site-menu" className="mx-auto max-w-6xl px-4 pb-4">
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-3 grid gap-2 sm:grid-cols-2">
-            <Link href="/alter"  className={item} onClick={() => setOpen(false)}>Alter</Link>
-            <Link href="/launch" className={item} onClick={() => setOpen(false)}>Launch</Link>
-            <Link href="/pot"    className={item} onClick={() => setOpen(false)}>PoT</Link>
+            <Link
+              href="/launch"
+              className={item}
+              onClick={() => setOpen(false)}
+            >
+              Launch
+            </Link>
+            <Link href="/pot" className={item} onClick={() => setOpen(false)}>
+              PoT
+            </Link>
           </div>
         </div>
       )}
