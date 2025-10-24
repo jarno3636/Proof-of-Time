@@ -1,4 +1,3 @@
-// components/LaunchShare.tsx
 "use client";
 
 import Image from "next/image";
@@ -12,6 +11,17 @@ const SITE =
   process.env.NEXT_PUBLIC_SITE_URL ||
   (typeof window !== "undefined" ? window.location.origin : "");
 const LAUNCH_URL = `${SITE}/launch`;
+const SALE_END = Number(process.env.NEXT_PUBLIC_PRESALE_END_UNIX || 0);
+
+// simple 9d 2h 47m formatter
+function fmtRemaining(t: number) {
+  if (t <= 0) return "ended";
+  const s = Math.floor(t / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${d}d ${h}h ${m}m`;
+}
 
 // X/Twitter
 function openTweet(text: string, url: string) {
@@ -22,8 +32,21 @@ function openTweet(text: string, url: string) {
 }
 
 export default function LaunchShare() {
+  // compute countdown live
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!SALE_END) return;
+    const id = setInterval(() => setNow(Date.now()), 1000 * 30); // update every 30s; plenty for copy
+    return () => clearInterval(id);
+  }, []);
+
+  const remaining = SALE_END ? Math.max(0, SALE_END * 1000 - now) : 0;
+  const countdown = SALE_END ? fmtRemaining(remaining) : null;
+
+  // text with countdown included
   const shareText =
-    "Launching Proof of Time on Base — fixed-price presale + holder rewards. Join:";
+    `Launching Proof of Time on Base — fixed-price presale + holder rewards. ` +
+    (countdown ? `Sale ends in ${countdown}.` : "Join:");
 
   return (
     <div className="w-full rounded-xl border border-zinc-800/70 bg-zinc-900/30 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
@@ -32,19 +55,20 @@ export default function LaunchShare() {
         <Image src="/pot.PNG" alt="Proof of Time" fill sizes="56px" className="object-cover" />
       </div>
 
-      {/* Text (allows wrapping without pushing buttons off-screen) */}
+      {/* Text */}
       <div className="min-w-0 flex-1">
         <div className="text-sm text-zinc-300">Share the launch</div>
         <div className="text-[11px] text-zinc-500">
-          Help spread the word. Links include the miniapp + launch page.
+          {countdown ? <>Sale ends in <span className="text-[#BBA46A] font-medium">{countdown}</span>.</> : "Help spread the word."}
         </div>
       </div>
 
       {/* Buttons (wrap on narrow screens) */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* ONE embed only → miniapp (prevents double preview) */}
         <ShareToFarcasterButton
           text={shareText}
-          embeds={[MINIAPP, LAUNCH_URL]}
+          embeds={[MINIAPP]}
           className="rounded-lg bg-[#BBA46A] text-[#0b0e14] px-3 py-1.5 text-sm font-semibold hover:bg-[#d6c289] transition"
         >
           Farcaster
