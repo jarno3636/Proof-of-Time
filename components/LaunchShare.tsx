@@ -2,35 +2,60 @@
 "use client";
 
 import Image from "next/image";
-import Countdown from "./Countdown";
+import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
-const MINIAPP = "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+const MINIAPP =
+  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
+const SITE =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "");
 const LAUNCH_URL = `${SITE}/launch`;
 
-const text = encodeURIComponent("Launching Proof of Time on Base — fixed-price presale + holder rewards. Join:");
-const tweetUrl = `https://twitter.com/intent/tweet?text=${text}&url=${encodeURIComponent(LAUNCH_URL)}`;
-const fcUrl    = `https://warpcast.com/~/compose?text=${text}&embeds[]=${encodeURIComponent(MINIAPP)}&embeds[]=${encodeURIComponent(LAUNCH_URL)}`;
-
-const SALE_END = Number(process.env.NEXT_PUBLIC_PRESALE_END_UNIX || 0); // optional for extra countdown
+// X/Twitter
+function openTweet(text: string, url: string) {
+  const base = "https://twitter.com/intent/tweet";
+  const href = `${base}?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+  const w = window.open(href, "_blank", "noopener,noreferrer");
+  if (!w) window.location.href = href;
+}
 
 export default function LaunchShare() {
+  const shareText =
+    "Launching Proof of Time on Base — fixed-price presale + holder rewards. Join:";
+
   return (
-    <div className="rounded-xl border border-zinc-800/70 bg-zinc-900/30 p-4 flex items-center gap-4">
-      <div className="shrink-0 relative w-14 h-14 rounded-lg overflow-hidden ring-1 ring-zinc-800/70">
+    <div className="w-full rounded-xl border border-zinc-800/70 bg-zinc-900/30 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+      {/* Logo */}
+      <div className="shrink-0 relative w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden ring-1 ring-zinc-800/70">
         <Image src="/pot.PNG" alt="Proof of Time" fill sizes="56px" className="object-cover" />
       </div>
-      <div className="flex-1">
+
+      {/* Text (allows wrapping without pushing buttons off-screen) */}
+      <div className="min-w-0 flex-1">
         <div className="text-sm text-zinc-300">Share the launch</div>
-        {SALE_END ? (
-          <div className="text-[11px] text-zinc-500">Sale ends in <span className="text-[#BBA46A]"><Countdown target={SALE_END} /></span></div>
-        ) : null}
+        <div className="text-[11px] text-zinc-500">
+          Help spread the word. Links include the miniapp + launch page.
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <a href={fcUrl} target="_blank" rel="noopener noreferrer"
-           className="rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800/60">Farcaster</a>
-        <a href={tweetUrl} target="_blank" rel="noopener noreferrer"
-           className="rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800/60">Twitter/X</a>
+
+      {/* Buttons (wrap on narrow screens) */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ShareToFarcasterButton
+          text={shareText}
+          embeds={[MINIAPP, LAUNCH_URL]}
+          className="rounded-lg bg-[#BBA46A] text-[#0b0e14] px-3 py-1.5 text-sm font-semibold hover:bg-[#d6c289] transition"
+        >
+          Farcaster
+        </ShareToFarcasterButton>
+
+        <button
+          onClick={() => openTweet(shareText, LAUNCH_URL)}
+          className="rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-800/60 transition"
+        >
+          Twitter/X
+        </button>
       </div>
     </div>
   );
