@@ -1,4 +1,4 @@
-"use client";
+// app/page.tsx  (Server Component — no "use client")
 
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
@@ -13,7 +13,7 @@ const RelicLegend        = dynamic(() => import("@/components/RelicLegend"), { s
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env;
+  if (env) return env; // e.g. https://proof-of-time.xyz
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
@@ -79,7 +79,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Token Launch card (no image, single countdown inside share bar area) */}
+          {/* Token Launch card (single countdown; no image) */}
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
             <h3 className="text-lg font-semibold">Token Launch</h3>
 
@@ -87,7 +87,6 @@ export default function Home() {
               Fixed-price presale with LP seeding and a 500M holder rewards program.
             </p>
 
-            {/* Single countdown (no duplicate image/countdown elsewhere) */}
             {hasCountdown && (
               <div className="mt-2 text-xs text-zinc-500">
                 Sale ends in{" "}
@@ -97,7 +96,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Share row (Farcaster + X) */}
             <div className="mt-4">
               <LaunchShare />
             </div>
