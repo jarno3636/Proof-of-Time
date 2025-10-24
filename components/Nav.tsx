@@ -107,12 +107,19 @@ export default function Nav() {
       {open && (
         <div id="site-menu" className="mx-auto max-w-6xl px-4 pb-4">
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-3 grid gap-2 sm:grid-cols-2">
-            {/* Public */}
-            <Link href="/alter" className={item} onClick={() => setOpen(false)}>Alter</Link>
-            <Link href="/launch" className={`${item} ${!isAdmin ? "opacity-50 cursor-not-allowed" : ""}`} onClick={() => isAdmin && setOpen(false)}>
+            {/* Admin-only links */}
+            <Link
+              href="/launch"
+              className={`${item} ${!isAdmin ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => isAdmin && setOpen(false)}
+            >
               Launch (Admin)
             </Link>
-            <Link href="/pot" className={`${item} ${!isAdmin ? "opacity-50 cursor-not-allowed" : ""}`} onClick={() => isAdmin && setOpen(false)}>
+            <Link
+              href="/pot"
+              className={`${item} ${!isAdmin ? "opacity-50 cursor-not-allowed" : ""}`}
+              onClick={() => isAdmin && setOpen(false)}
+            >
               PoT (Admin)
             </Link>
           </div>
