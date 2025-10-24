@@ -89,9 +89,10 @@ export default function LaunchPage() {
   const { data: maxWei } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "maxPerWalletWei" });
   const { data: hardCap } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "hardCapWei" });
   const { data: saleSupply } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "saleSupply" });
-  const { data: raised } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei", watch: true });
-  const { data: sold } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens", watch: true });
-  const { data: isLive } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live", watch: true });
+  // ✅ wagmi@2: remove `watch: true`; use query refetch instead
+  const { data: raised } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei", query: { refetchInterval: 5000 } });
+  const { data: sold } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens", query: { refetchInterval: 5000 } });
+  const { data: isLive } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live", query: { refetchInterval: 5000 } });
   const { data: bal } = useBalance({ address, chainId: base.id });
 
   /** Write */
@@ -131,7 +132,6 @@ export default function LaunchPage() {
     { name: "Presale (60%)", value: 300_000_000 },
     { name: "LP & Treasury (37.5%)", value: 187_500_000 },
     { name: "Team (2.5%)", value: 12_500_000 },
-    // Extra 500M released by holding tiers (described and linked)
     { name: "Holder Rewards (500M)", value: 500_000_000 },
   ];
   const PIE_COLORS = [GOLD, "#8a7a4a", "#6b613e", "#3c3a2f"]; // gold accents
@@ -248,77 +248,77 @@ export default function LaunchPage() {
           </div>
 
           {/* Right: Details & links */}
-<div className="space-y-6">
-  {/* Info table */}
-  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
-    <h3 className="text-lg font-semibold text-[${GOLD}]">Sale Information</h3>
-    <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
-      <table className="w-full text-sm">
-        <tbody className="divide-y divide-zinc-800/60">
-          <Row k="Price" v={`${fmt18(price as bigint, 0)} tokens / ETH`} />
-          <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
-          <Row k="Min per wallet" v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
-          <Row k="Max per wallet" v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
-          <Row k="Hard cap" v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
-          <Row k="Tokens sold" v={`${fmt18(sold as bigint, 0)}`} />
-          <Row k="Sale window" v={`${ts(startAt as bigint)} → ${ts(endAt as bigint)}`} />
-          <Row k="Chain" v="Base (8453)" />
-          {LP_LOCK_UNIX ? <Row k="LP lock until" v={ts(LP_LOCK_UNIX)} /> : null}
-          {TEAM_LOCK_UNIX ? <Row k="Team lock until" v={ts(TEAM_LOCK_UNIX)} /> : null}
-        </tbody>
-      </table>
-    </div>
+          <div className="space-y-6">
+            {/* Info table */}
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+              <h3 className="text-lg font-semibold text-[${GOLD}]">Sale Information</h3>
+              <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-zinc-800/60">
+                    <Row k="Price" v={`${fmt18(price as bigint, 0)} tokens / ETH`} />
+                    <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
+                    <Row k="Min per wallet" v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
+                    <Row k="Max per wallet" v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
+                    <Row k="Hard cap" v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
+                    <Row k="Tokens sold" v={`${fmt18(sold as bigint, 0)}`} />
+                    <Row k="Sale window" v={`${ts(startAt as bigint)} → ${ts(endAt as bigint)}`} />
+                    <Row k="Chain" v="Base (8453)" />
+                    {LP_LOCK_UNIX ? <Row k="LP lock until" v={ts(LP_LOCK_UNIX)} /> : null}
+                    {TEAM_LOCK_UNIX ? <Row k="Team lock until" v={ts(TEAM_LOCK_UNIX)} /> : null}
+                  </tbody>
+                </table>
+              </div>
 
-    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-      {PRESALE_ADDRESS && (
-        <a
-          href={`https://basescan.org/address/${PRESALE_ADDRESS}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-        >
-          View Presale ↗
-        </a>
-      )}
-      {TOKEN_ADDRESS && (
-        <a
-          href={`https://basescan.org/address/${TOKEN_ADDRESS}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-        >
-          View Token ↗
-        </a>
-      )}
-      <Link
-        href={POT_LINK}
-        className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-      >
-        Holder Rewards (PoT) ↗
-      </Link>
-    </div>
-  </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                {PRESALE_ADDRESS && (
+                  <a
+                    href={`https://basescan.org/address/${PRESALE_ADDRESS}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+                  >
+                    View Presale ↗
+                  </a>
+                )}
+                {TOKEN_ADDRESS && (
+                  <a
+                    href={`https://basescan.org/address/${TOKEN_ADDRESS}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+                  >
+                    View Token ↗
+                  </a>
+                )}
+                <Link
+                  href={POT_LINK}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+                >
+                  Holder Rewards (PoT) ↗
+                </Link>
+              </div>
+            </div>
 
-  {/* NEW: Contracts & Links (above disclaimer) */}
-  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
-    <h3 className="text-lg font-semibold text-[${GOLD}]">Contracts & Links</h3>
-    <div className="mt-4 grid gap-3 md:grid-cols-2">
-      <A href={LINKS.token} label="PoT Token" />
-      <A href={LINKS.presale} label="Presale Fixed" />
-      <A href={LINKS.liq} label="Liquidity Manager" />
-      <A href={LINKS.timelock} label="Simple Token Timelock" />
-      <A href={LINKS.claim} label="TimeLockClaim" />
-      <Link
-        href={LINKS.potPage}
-        className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-      >
-        Holder Rewards Page ↗
-      </Link>
-    </div>
-    <p className="mt-3 text-xs text-zinc-500">All links open in a new tab when applicable.</p>
-  </div>
+            {/* NEW: Contracts & Links (above disclaimer) */}
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+              <h3 className="text-lg font-semibold text-[${GOLD}]">Contracts & Links</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <A href={LINKS.token} label="PoT Token" />
+                <A href={LINKS.presale} label="Presale Fixed" />
+                <A href={LINKS.liq} label="Liquidity Manager" />
+                <A href={LINKS.timelock} label="Simple Token Timelock" />
+                <A href={LINKS.claim} label="TimeLockClaim" />
+                <Link
+                  href={LINKS.potPage}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+                >
+                  Holder Rewards Page ↗
+                </Link>
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">All links open in a new tab when applicable.</p>
+            </div>
 
-  {/* Disclaimer */}
+            {/* Disclaimer */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
               <h3 className="text-lg font-semibold text-[${GOLD}]">Disclaimer</h3>
               <p className="mt-2 text-xs leading-relaxed text-zinc-400">
@@ -343,6 +343,21 @@ export default function LaunchPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+function A({ href, label }: { href: string; label: string }) {
+  if (!href) return null;
+  const isExternal = href.startsWith("http");
+  const classes = "inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition";
+  return isExternal ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={classes}>
+      {label} ↗
+    </a>
+  ) : (
+    <Link href={href} className={classes}>
+      {label} ↗
+    </Link>
   );
 }
 
