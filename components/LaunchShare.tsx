@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react"; // <-- add this
 import Image from "next/image";
 import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
@@ -36,7 +37,7 @@ export default function LaunchShare() {
   const [now, setNow] = React.useState(() => Date.now());
   React.useEffect(() => {
     if (!SALE_END) return;
-    const id = setInterval(() => setNow(Date.now()), 1000 * 30); // update every 30s; plenty for copy
+    const id = setInterval(() => setNow(Date.now()), 1000 * 30); // update every 30s
     return () => clearInterval(id);
   }, []);
 
@@ -63,7 +64,7 @@ export default function LaunchShare() {
         </div>
       </div>
 
-      {/* Buttons (wrap on narrow screens) */}
+      {/* Buttons */}
       <div className="flex flex-wrap items-center gap-2">
         {/* ONE embed only → miniapp (prevents double preview) */}
         <ShareToFarcasterButton
