@@ -1,4 +1,5 @@
-// app/page.tsx
+"use client";
+
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
@@ -12,7 +13,7 @@ const RelicLegend        = dynamic(() => import("@/components/RelicLegend"), { s
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env; // e.g. https://proof-of-time.xyz
+  if (env) return env;
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
@@ -55,14 +56,14 @@ export default function Home() {
 
       {/* ---------- Hero ---------- */}
       <section className="mx-auto max-w-6xl px-6 pt-14 pb-10 md:pt-20 md:pb-16">
-        <div className="grid gap-8 md:grid-cols-[1.3fr,1fr] md:items-center">
+        <div className="grid gap-8 md:grid-cols-2 md:items-start">
           {/* Headline + CTA */}
           <div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-black leading-tight tracking-tight text-center md:text-left">
               Claim your <span className="text-zinc-400">time on chain.</span>
             </h1>
 
-            <p className="mt-5 max-w-2xl text-zinc-400 text-center md:text-left md:pr-10">
+            <p className="mt-5 max-w-2xl text-zinc-400 text-center md:text-left md:pr-10 mx-auto md:mx-0">
               Proof of Time reveals your longest-held tokens on Base—turning consistent
               holders into living records of patience, loyalty, and belief.
             </p>
@@ -78,36 +79,25 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Token Launch card */}
+          {/* Token Launch card (no image, single countdown inside share bar area) */}
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
-            <div className="flex items-center gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/pot.PNG"
-                alt="Proof of Time"
-                width={56}
-                height={56}
-                className="rounded-lg border border-zinc-800/60"
-              />
-              <div className="min-w-0">
-                <h3 className="text-lg font-semibold">Token Launch</h3>
-                {hasCountdown ? (
-                  <div className="text-xs text-zinc-500 mt-0.5">
-                    Sale ends in{" "}
-                    <span className="text-[#BBA46A] font-semibold">
-                      <HomeCountdown />
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-xs text-zinc-500 mt-0.5">Presale live on Base</div>
-                )}
-              </div>
-            </div>
+            <h3 className="text-lg font-semibold">Token Launch</h3>
 
-            <p className="mt-4 text-sm text-zinc-400">
-              Fixed-price presale with LP seeding and a 500M holder rewards program. Spread the word:
+            <p className="mt-3 text-sm text-zinc-400">
+              Fixed-price presale with LP seeding and a 500M holder rewards program.
             </p>
 
+            {/* Single countdown (no duplicate image/countdown elsewhere) */}
+            {hasCountdown && (
+              <div className="mt-2 text-xs text-zinc-500">
+                Sale ends in{" "}
+                <span className="text-[#BBA46A] font-semibold">
+                  <HomeCountdown />
+                </span>
+              </div>
+            )}
+
+            {/* Share row (Farcaster + X) */}
             <div className="mt-4">
               <LaunchShare />
             </div>
