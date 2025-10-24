@@ -1,7 +1,6 @@
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
-import Link from "next/link";
 import RevealRelicsButton from "@/components/RevealRelicsButton";
 
 /* ---------- Stable absolute site URL (server-safe) ---------- */
@@ -75,16 +74,19 @@ export default function Home() {
             Coming soon
           </span>
 
-          {/* Greyed-out link that looks disabled until launch */}
-          <Link
-            href="/pot"
-            aria-disabled
-            onClick={(e) => e.preventDefault()}
-            className="cursor-not-allowed rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-600 hover:text-zinc-600"
+          {/* Disabled look-alike (no client event handlers on Server Component) */}
+          <span
+            aria-disabled="true"
+            className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-600 pointer-events-none select-none"
             title="Token page is not yet live"
           >
             Proof of Time Token
-          </Link>
+          </span>
+          {/* When ready to launch, replace the span above with:
+              <Link href="/pot" className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 transition">
+                Proof of Time Token
+              </Link>
+          */}
         </div>
       </section>
 
