@@ -3,7 +3,7 @@
 
 import Nav from "@/components/Nav";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   useAccount,
   useBalance,
@@ -11,7 +11,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { formatEther, formatUnits, parseAbi } from "viem";
+import { formatEther, formatUnits, parseAbi, parseEther } from "viem";
 import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import LaunchShare from "@/components/LaunchShare";
@@ -43,6 +43,8 @@ const PRESALE_ABI = parseAbi([
   "function totalRaisedWei() view returns (uint256)",
   "function totalSoldTokens() view returns (uint256)",
   "function live() view returns (bool)",
+  "function finalized() view returns (bool)",
+  "function claim() view returns (address)",
   "function buy() payable",
 ] as const);
 
@@ -50,6 +52,13 @@ const LIQ_ABI       = parseAbi([ "function lpLockedUntil() view returns (uint256
 const TEAMLOCK_ABI  = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
 const CLAIM_ABI_A   = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
 const CLAIM_ABI_B   = parseAbi([ "function unlockAt() view returns (uint256)" ] as const);
+
+// Minimal ClaimLock ABI for UI
+const CLAIMLOCK_ABI = parseAbi([
+  "function claim()",
+  "function claimable(address) view returns (uint256)",
+  "function unlockAt() view returns (uint256)",
+] as const);
 
 /** ========= Links ========= */
 const LINKS = {
@@ -88,6 +97,13 @@ const PIE_COLORS = ["#F1E1A6", "#A3925D", "#6B6242", "#2B2A25"]; // lightest →
 export default function LaunchPage() {
   const { address, isConnected, chainId } = useAccount();
   const [ethAmount, setEthAmount] = useState<string>("");
+  const [now, setNow] = useState(() => Date.now());
+  const [lastTx, setLastTx] = useState<"buy" | "claim" | null>(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   /** Reads — Presale */
   const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth" });
@@ -100,6 +116,8 @@ export default function LaunchPage() {
   const { data: raised }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei",  query: { refetchInterval: 5000 } });
   const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens", query: { refetchInterval: 5000 } });
   const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",            query: { refetchInterval: 5000 } });
+  const { data: finalized }  = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "finalized",       query: { refetchInterval: 5000 } });
+  const { data: claimFromPresale } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim" });
 
   /** Reads — Locks (prefer envs) */
   const { data: lpOnChain } =
@@ -109,17 +127,49 @@ export default function LaunchPage() {
   const { data: claimA } =
     useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
   const { data: claimB } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  function: "unlockAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } } as any);
 
   const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpOnChain || 0)) || undefined;
   const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamOnChain || 0)) || undefined;
   const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimA || 0) || Number(claimB || 0)) || undefined;
 
-  /** Wallet + buy */
+  /** Claim contract resolve */
+  const claimAddr = (claimFromPresale as `0x${string}` | undefined) || (CLAIM_ADDR || undefined);
+
+  /** Claim lock reads */
+  const { data: unlockAt, refetch: refetchUnlockAt } = useReadContract({
+    address: claimAddr,
+    abi: CLAIMLOCK_ABI,
+    functionName: "unlockAt",
+    query: { enabled: !!claimAddr, refetchInterval: 30_000 },
+  });
+
+  const {
+    data: userClaimable,
+    refetch: refetchClaimable,
+  } = useReadContract({
+    address: claimAddr,
+    abi: CLAIMLOCK_ABI,
+    functionName: "claimable",
+    args: [address as `0x${string}`],
+    query: { enabled: !!claimAddr && !!address, refetchInterval: 30_000 },
+  });
+
+  /** Wallet + write contracts (buy/claim share the same write + receipt hooks) */
   const { data: bal } = useBalance({ address, chainId: base.id });
   const { writeContract, data: hash, isPending } = useWriteContract();
   const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({ hash });
 
+  useEffect(() => {
+    if (confirmed && lastTx === "claim") {
+      // refresh claim figures after a successful claim
+      refetchClaimable?.();
+      refetchUnlockAt?.();
+      setLastTx(null);
+    }
+  }, [confirmed, lastTx, refetchClaimable, refetchUnlockAt]);
+
+  /** Buy gating */
   const canBuy = useMemo(() => {
     if (!isConnected || chainId !== base.id) return false;
     const v = Number(ethAmount || 0);
@@ -134,12 +184,40 @@ export default function LaunchPage() {
   }, [isConnected, chainId, ethAmount, minWei, maxWei, bal, isLive]);
 
   const onBuy = () => {
-    if (!PRESALE_ADDRESS) return;
+    if (!PRESALE_ADDRESS || !ethAmount) return;
+    setLastTx("buy");
     writeContract({
       address: PRESALE_ADDRESS,
       abi: PRESALE_ABI,
       functionName: "buy",
-      value: BigInt(Math.floor(Number(ethAmount) * 1e18)),
+      value: parseEther(ethAmount), // precise
+      chainId: base.id,
+    });
+  };
+
+  /** Claim gating */
+  const unlockMs = Number(unlockAt || 0) * 1000;
+  const isUnlocked = !!unlockMs && now >= unlockMs;
+  const claimableNum = Number(userClaimable ?? 0);
+
+  const canClaim = Boolean(
+    isConnected &&
+      chainId === base.id &&
+      claimAddr &&
+      finalized &&
+      isUnlocked &&
+      claimableNum > 0 &&
+      !isPending &&
+      !confirming
+  );
+
+  const onClaim = () => {
+    if (!claimAddr) return;
+    setLastTx("claim");
+    writeContract({
+      address: claimAddr,
+      abi: CLAIMLOCK_ABI,
+      functionName: "claim",
       chainId: base.id,
     });
   };
@@ -158,12 +236,34 @@ export default function LaunchPage() {
     return { r, h, pct: h > 0 ? Math.min(100, (r / h) * 100) : 0 };
   }, [raised, hardCap]);
 
+  /** Sale status text */
+  const startMs = Number(startAt || 0) * 1000;
+  const endMs   = Number(endAt   || 0) * 1000;
+
+  let saleStatus: string;
+  if (!startMs || !endMs) {
+    saleStatus = "Sale schedule pending";
+  } else if (now < startMs) {
+    saleStatus = `Opens ${ts(Number(startAt || 0))} (${rel(Number(startAt || 0))})`;
+  } else if (now >= startMs && now <= endMs) {
+    saleStatus = (isLive ? "Presale live" : "Presale window active");
+  } else {
+    saleStatus = finalized ? "Presale closed · Finalized" : "Presale closed";
+  }
+
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
       {/* Centered container; single column until lg; cards themselves capped & centered */}
       <section className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 md:py-10">
+        {/* Top status pill */}
+        <div className="mb-6 flex justify-center">
+          <span className="inline-flex items-center rounded-full bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 ring-1 ring-zinc-800/70">
+            {saleStatus}
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10 justify-items-center lg:justify-items-stretch">
           {/* Left column */}
           <div className="w-full max-w-[640px]">
@@ -200,10 +300,10 @@ export default function LaunchPage() {
                         : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                     }`}
                   >
-                    {isPending ? "Submitting…" : confirming ? "Confirming…" : "Buy"}
+                    {isPending && lastTx === "buy" ? "Submitting…" : confirming && lastTx === "buy" ? "Confirming…" : "Buy"}
                   </button>
                 </div>
-                {confirmed && <div className="text-xs text-emerald-400">Purchase confirmed ✔</div>}
+                {confirmed && lastTx === "buy" && <div className="text-xs text-emerald-400">Purchase confirmed ✔</div>}
                 {isConnected && chainId !== base.id && (
                   <div className="text-xs text-red-400">Switch to Base to continue.</div>
                 )}
@@ -279,7 +379,58 @@ export default function LaunchPage() {
 
           {/* Right column */}
           <div className="w-full max-w-[640px]">
+            {/* Claim card */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Claim Tokens</h3>
+
+              {!claimAddr ? (
+                <p className="mt-2 text-sm text-zinc-400">
+                  Claim contract not set yet.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm text-zinc-400">
+                    {finalized ? (
+                      isUnlocked ? (
+                        <>Your claimable: <span className="text-[#BBA46A] font-medium">{fmt18(userClaimable as bigint, 0)}</span> tokens</>
+                      ) : (
+                        <>Unlocks at <span className="text-[#BBA46A]">{ts(unlockAt as bigint)}</span> ({rel(Number(unlockAt))})</>
+                      )
+                    ) : (
+                      <>Claims open after presale is finalized.</>
+                    )}
+                  </p>
+
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={onClaim}
+                      disabled={!canClaim}
+                      className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        canClaim
+                          ? "bg-[#BBA46A] text-[#0b0e14] hover:bg-[#d6c289]"
+                          : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                      }`}
+                    >
+                      {isPending && lastTx === "claim" ? "Submitting…" : confirming && lastTx === "claim" ? "Confirming…" : "Claim"}
+                    </button>
+
+                    {claimAddr && (
+                      <a
+                        href={`https://basescan.org/address/${claimAddr}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 text-sm font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                      >
+                        View Claim Contract ↗
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sale info */}
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Sale Information</h3>
               <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
                 <table className="w-full text-sm">
@@ -291,10 +442,11 @@ export default function LaunchPage() {
                     <Row k="Hard cap"        v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
                     <Row k="Tokens sold"     v={`${fmt18(sold as bigint, 0)}`} />
                     <Row k="Sale window"     v={`${ts(startAt as bigint)}  →  ${ts(endAt as bigint)}`} />
+                    <Row k="Status"          v={saleStatus} />
                     <Row k="Chain"           v="Base (8453)" />
                     {(LP_LOCK_UNIX_ENV || lpOnChain)     && <Row k="LP lock until"   v={`${ts(lpUntil!)}  ·  ${rel(lpUntil!)}`} />}
                     {(TEAM_LOCK_UNIX_ENV || teamOnChain) && <Row k="Team lock until" v={`${ts(teamUntil!)}  ·  ${rel(teamUntil!)}`} />}
-                    {(CLAIM_UNLOCK_UNIX || claimA || claimB) && <Row k="Claim unlocks" v={`${ts(claimUnlock!)}  ·  ${rel(claimUnlock!)}`} />}
+                    {(CLAIM_UNLOCK_UNIX || claimA || claimB || unlockAt) && <Row k="Claim unlocks" v={`${ts((unlockAt as bigint) || claimUnlock!)}  ·  ${rel(Number((unlockAt as bigint) || claimUnlock!))}`} />}
                   </tbody>
                 </table>
               </div>
