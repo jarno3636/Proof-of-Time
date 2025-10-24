@@ -203,6 +203,10 @@ export default function PotPage() {
                 <li>
                   Optional <span className="text-[#BBA46A]">global halving</span> every N weeks
                 </li>
+                <li>
+                  <span className="text-[#BBA46A] font-medium">Minimum hold:</span>{" "}
+                  500 PØT required to earn rewards
+                </li>
               </ul>
             </div>
           </div>
@@ -228,6 +232,10 @@ export default function PotPage() {
                 <li>
                   Any outgoing transfer <span className="text-[#BBA46A]">resets</span> your streak
                   and frozen baseline.
+                </li>
+                <li>
+                  You must hold at least{" "}
+                  <span className="text-[#BBA46A] font-semibold">500 PØT</span> to earn rewards.
                 </li>
                 <li>
                   Click <strong className="text-[#BBA46A]">Claim</strong> to receive rewards from
