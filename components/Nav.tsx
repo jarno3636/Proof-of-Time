@@ -18,9 +18,13 @@ export default function Nav() {
 
   const insideFarcaster = useMemo(isFarcasterUA, []);
 
-  // Your admin/treasury wallet
-  const ADMIN_ADDRESS = "0x3118FE32B27651734fe4D966D1bC240bE6e3139D";
-  const isAdmin = !!address && address.toLowerCase() === ADMIN_ADDRESS.toLowerCase();
+  // --- Admin allowlist (add more as needed) ---
+  const ADMIN_ADDRESSES = [
+    "0x3118FE32B27651734fe4D966D1bC240bE6e3139D",
+    "0x738f3feBfF6DACeE3B4b9dfb339128F6E94F0E8d",
+  ].map(a => a.toLowerCase());
+  const isAdmin = !!address && ADMIN_ADDRESSES.includes(address.toLowerCase());
+  // --------------------------------------------
 
   // Prefer Farcaster connector inside Warpcast if present
   const farcasterConn = useMemo(
@@ -50,8 +54,7 @@ export default function Nav() {
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
-        {/* We render the admin link *inside* ConnectButton.Custom so we can safely
-           rely on the 'mounted'/'connected' signals without flicker */}
+        {/* Admin-only link rendered with wallet state */}
         <ConnectButton.Custom>
           {({
             account,
@@ -65,11 +68,9 @@ export default function Nav() {
             const ready = mounted && authenticationStatus !== "loading";
             const connected = ready && account && chain;
 
-            // Show the POT link only once wallet state is ready and admin is connected
             const showPotLink = connected && isAdmin;
 
             const handleClick = async () => {
-              // Inside Warpcast, prefer Farcaster connector (no popups)
               if (insideFarcaster && farcasterConn) {
                 try {
                   await connectAsync({ connector: farcasterConn });
@@ -83,7 +84,6 @@ export default function Nav() {
 
             return (
               <>
-                {/* Center/left area — admin-only link */}
                 <div className="ml-4">
                   {showPotLink && (
                     <Link href="/pot" className={potLinkClasses} title="Proof of Time Token">
