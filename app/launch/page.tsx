@@ -1,3 +1,4 @@
+// app/launch/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
@@ -45,12 +46,10 @@ const PRESALE_ABI = parseAbi([
   "function buy() payable",
 ] as const);
 
-const LIQ_ABI = parseAbi([ "function lpLockedUntil() view returns (uint256)" ] as const);
-const TEAMLOCK_ABI = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
-
-// Some claim lock contracts use different names:
-const CLAIM_ABI_RELEASE = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
-const CLAIM_ABI_UNLOCK  = parseAbi([ "function unlockAt() view returns (uint256)" ] as const);
+const LIQ_ABI       = parseAbi([ "function lpLockedUntil() view returns (uint256)" ] as const);
+const TEAMLOCK_ABI  = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
+const CLAIM_ABI_A   = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
+const CLAIM_ABI_B   = parseAbi([ "function unlockAt() view returns (uint256)" ] as const);
 
 /** ========= Links ========= */
 const LINKS = {
@@ -84,7 +83,6 @@ function rel(unix?: bigint | number) {
 }
 
 /** Palette tuned for contrast on dark */
-const GOLD = "#BBA46A";
 const PIE_COLORS = ["#F1E1A6", "#A3925D", "#6B6242", "#2B2A25"]; // lightest → darkest
 
 export default function LaunchPage() {
@@ -103,21 +101,19 @@ export default function LaunchPage() {
   const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens", query: { refetchInterval: 5000 } });
   const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",            query: { refetchInterval: 5000 } });
 
-  /** Reads — Locks: prefer env, else try contracts if provided */
-  const { data: lpUntilOnChain } =
+  /** Reads — Locks (prefer envs) */
+  const { data: lpOnChain } =
     useReadContract({ address: LIQ_ADDRESS, abi: LIQ_ABI, functionName: "lpLockedUntil", query: { enabled: !!LIQ_ADDRESS && !LP_LOCK_UNIX_ENV } });
-
-  const { data: teamUntilOnChain } =
+  const { data: teamOnChain } =
     useReadContract({ address: TEAMLOCK_ADDR, abi: TEAMLOCK_ABI, functionName: "releaseAt", query: { enabled: !!TEAMLOCK_ADDR && !TEAM_LOCK_UNIX_ENV } });
+  const { data: claimA } =
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
+  const { data: claimB } =
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
 
-  const { data: claimReleaseA } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_RELEASE, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
-  const { data: claimReleaseB } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_UNLOCK,  functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
-
-  const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpUntilOnChain || 0)) || undefined;
-  const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamUntilOnChain || 0)) || undefined;
-  const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimReleaseA || 0) || Number(claimReleaseB || 0)) || undefined;
+  const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpOnChain || 0)) || undefined;
+  const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamOnChain || 0)) || undefined;
+  const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimA || 0) || Number(claimB || 0)) || undefined;
 
   /** Wallet + buy */
   const { data: bal } = useBalance({ address, chainId: base.id });
@@ -166,13 +162,14 @@ export default function LaunchPage() {
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
-      {/* Centered container; equal columns on desktop; single column + centered on mobile */}
-      <section className="mx-auto max-w-6xl px-6 py-8 md:py-10">
-        <div className="grid gap-8 lg:grid-cols-2">
-          {/* Left: Buy + Share (centered on mobile via mx-auto + max width) */}
-          <div className="space-y-6 max-w-[680px] w-full mx-auto">
+      {/* Centered container; single column until lg; cards themselves capped & centered */}
+      <section className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 md:py-10">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10 justify-items-center lg:justify-items-stretch">
+          {/* Left column */}
+          <div className="w-full max-w-[640px]">
+            {/* Buy card */}
             <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
-              <h1 className="text-3xl font-semibold tracking-wide text-center md:text-left">
+              <h1 className="text-center md:text-left text-3xl font-semibold tracking-wide">
                 Launch <span className="text-[#BBA46A]">Your Token</span>
               </h1>
 
@@ -181,7 +178,7 @@ export default function LaunchPage() {
                 Team allocation locked. Holder rewards via a separate <span className="text-[#BBA46A]">500M tiered program</span>.
               </p>
 
-              {/* Buy widget */}
+              {/* Buy */}
               <div className="mt-5 space-y-3">
                 <label className="text-xs text-zinc-400">Amount (ETH)</label>
                 <div className="flex items-center gap-3">
@@ -226,18 +223,16 @@ export default function LaunchPage() {
                 </div>
               </div>
 
-              {/* Share (this is the single place where the countdown appears, via component content) */}
+              {/* Share */}
               <div className="mt-6">
                 <LaunchShare />
               </div>
             </div>
 
-            {/* Pie chart: distribution (not cut off, centered on mobile) */}
-            <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
-              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide text-center md:text-left">
-                Token Distribution
-              </h3>
-              <div className="mt-4 h-64 md:h-80">
+            {/* Pie */}
+            <div className="mt-6 rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide text-center md:text-left">Token Distribution</h3>
+              <div className="mt-4 h-64 md:h-80 overflow-visible">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -282,8 +277,8 @@ export default function LaunchPage() {
             </div>
           </div>
 
-          {/* Right: Details & links */}
-          <div className="space-y-6 max-w-[680px] w-full mx-auto">
+          {/* Right column */}
+          <div className="w-full max-w-[640px]">
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Sale Information</h3>
               <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
@@ -297,9 +292,9 @@ export default function LaunchPage() {
                     <Row k="Tokens sold"     v={`${fmt18(sold as bigint, 0)}`} />
                     <Row k="Sale window"     v={`${ts(startAt as bigint)}  →  ${ts(endAt as bigint)}`} />
                     <Row k="Chain"           v="Base (8453)" />
-                    {lpUntil ?     <Row k="LP lock until"   v={`${ts(lpUntil)}  ·  ${rel(lpUntil)}`} /> : null}
-                    {teamUntil ?   <Row k="Team lock until" v={`${ts(teamUntil)}  ·  ${rel(teamUntil)}`} /> : null}
-                    {claimUnlock ? <Row k="Claim unlocks"   v={`${ts(claimUnlock)}  ·  ${rel(claimUnlock)}`} /> : null}
+                    {(LP_LOCK_UNIX_ENV || lpOnChain)     && <Row k="LP lock until"   v={`${ts(lpUntil!)}  ·  ${rel(lpUntil!)}`} />}
+                    {(TEAM_LOCK_UNIX_ENV || teamOnChain) && <Row k="Team lock until" v={`${ts(teamUntil!)}  ·  ${rel(teamUntil!)}`} />}
+                    {(CLAIM_UNLOCK_UNIX || claimA || claimB) && <Row k="Claim unlocks" v={`${ts(claimUnlock!)}  ·  ${rel(claimUnlock!)}`} />}
                   </tbody>
                 </table>
               </div>
@@ -335,7 +330,7 @@ export default function LaunchPage() {
             </div>
 
             {/* Contracts & Links */}
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Contracts & Links</h3>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <A href={LINKS.token}   label="PoT Token" />
@@ -354,7 +349,7 @@ export default function LaunchPage() {
             </div>
 
             {/* Disclaimer */}
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Disclaimer</h3>
               <p className="mt-2 text-xs leading-relaxed text-zinc-400">
                 This page provides access to a token presale smart contract deployed on Base. Tokens have no promise of returns,
@@ -365,9 +360,9 @@ export default function LaunchPage() {
         </div>
       </section>
 
-      {/* Simplified footer */}
+      {/* Footer */}
       <footer className="border-t border-zinc-800/60 bg-zinc-900/20">
-        <div className="mx-auto max-w-6xl px-6 py-6 flex items-center justify-center">
+        <div className="mx-auto w-full max-w-6xl px-6 py-6 flex items-center justify-center">
           <div className="text-xs text-zinc-500">© {new Date().getFullYear()} Proof of Time</div>
         </div>
       </footer>
