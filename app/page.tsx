@@ -1,7 +1,11 @@
+"use client";
+
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
 import RevealRelicsButton from "@/components/RevealRelicsButton";
+import HomeCountdown from "@/components/HomeCountdown";
+import LaunchShare from "@/components/LaunchShare";
 
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -13,8 +17,7 @@ function getSiteUrl() {
 }
 const site = getSiteUrl();
 
-const HomeShareBar = dynamic(() => import("@/components/HomeShareBar"), { ssr: false });
-const RelicLegend  = dynamic(() => import("@/components/RelicLegend"),  { ssr: false });
+const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
 /* ---------- Metadata ---------- */
 export const metadata: Metadata = {
@@ -44,16 +47,19 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
+  const hasCountdown = !!process.env.NEXT_PUBLIC_PRESALE_END_UNIX;
+
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
+      {/* ---------- Hero Section ---------- */}
       <section className="mx-auto max-w-6xl px-6 pt-16 pb-20">
         <h1 className="text-5xl md:text-6xl font-black tracking-tight">
           Claim your<span className="text-zinc-400"> time on chain.</span>
         </h1>
 
-        {/* Big gold CTA just under the headline */}
+        {/* Big gold CTA */}
         <div className="mt-6">
           <RevealRelicsButton size="lg" />
         </div>
@@ -63,33 +69,34 @@ export default function Home() {
           consistent holders into living records of patience, loyalty, and belief.
         </p>
 
-        {/* Share the app CTA */}
-        <div className="mt-6">
-          <HomeShareBar />
-        </div>
+        {/* Token Launch Section */}
+        <div className="mt-10 space-y-4">
+          <div className="flex items-center flex-wrap gap-3">
+            <a
+              href="/launch"
+              className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 transition"
+            >
+              Proof of Time Token
+            </a>
 
-        {/* Coming soon pill + greyed link to token page */}
-        <div className="mt-10 flex items-center gap-3">
-          <span className="inline-flex items-center rounded-full bg-zinc-800/60 px-3 py-1 text-xs font-semibold text-zinc-400 ring-1 ring-inset ring-zinc-700/60">
-            Coming soon
-          </span>
+            {hasCountdown && (
+              <span className="text-xs text-zinc-500">
+                Sale ends in{" "}
+                <span className="text-[#BBA46A] font-semibold">
+                  <HomeCountdown />
+                </span>
+              </span>
+            )}
+          </div>
 
-          {/* Disabled look-alike (no client event handlers on Server Component) */}
-          <span
-            aria-disabled="true"
-            className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-600 pointer-events-none select-none"
-            title="Token page is not yet live"
-          >
-            Proof of Time Token
-          </span>
-          {/* When ready to launch, replace the span above with:
-              <Link href="/pot" className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 transition">
-                Proof of Time Token
-              </Link>
-          */}
+          {/* Launch share bar (Farcaster + X) */}
+          <div className="max-w-md">
+            <LaunchShare />
+          </div>
         </div>
       </section>
 
+      {/* ---------- Features ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
@@ -107,6 +114,7 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ---------- Legend + Note ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-24">
         <RelicLegend />
         <p className="mt-10 text-sm text-zinc-500 max-w-3xl">
@@ -118,6 +126,7 @@ export default function Home() {
   );
 }
 
+/* ---------- Feature Card ---------- */
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5">
