@@ -1,7 +1,6 @@
 "use client";
 
 import Nav from "@/components/Nav";
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 import {
@@ -142,7 +141,7 @@ export default function PotPage() {
 
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
-      {/* Use site Nav (now includes the /pot link for your admin wallet) */}
+      {/* Site Nav */}
       <Nav />
 
       {/* Top bar with back + contract snippet */}
@@ -170,9 +169,7 @@ export default function PotPage() {
         <div className="grid gap-8 md:grid-cols-[340px,1fr]">
           {/* Left: Logo & blurb */}
           <div className="space-y-6">
-            {/* Use pot-dark background-matched image if available */}
             <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 flex items-center justify-center">
-              {/* Prefer /pot-dark.png; fallback is /pot.PNG */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/pot.PNG"
@@ -192,8 +189,8 @@ export default function PotPage() {
               </p>
               <ul className="mt-3 text-sm text-zinc-400 list-disc pl-5 space-y-1">
                 <li>
-                  <span className="text-[#BBA46A] font-medium">Fixed supply:</span> 1,000,000,000
-                  {" "}PØT (18 decimals)
+                  <span className="text-[#BBA46A] font-medium">Fixed supply:</span> 1,000,000,000{" "}
+                  PØT (18 decimals)
                 </li>
                 <li>
                   <span className="text-[#BBA46A] font-medium">Week-2+ rewards</span>, streak resets
@@ -212,7 +209,7 @@ export default function PotPage() {
 
           {/* Right side: Info first, then live panel */}
           <div className="space-y-6">
-            {/* --- How rewards work (moved above) --- */}
+            {/* --- How rewards work --- */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
               <h3 className="text-lg font-semibold text-[#BBA46A]">How rewards work</h3>
               <ol className="mt-3 text-sm text-zinc-400 list-decimal pl-5 space-y-2">
@@ -287,6 +284,33 @@ export default function PotPage() {
           </div>
         </div>
       </section>
+
+      {/* ===== Footer with contract link ===== */}
+      <footer className="border-t border-zinc-800/60 bg-zinc-900/20">
+        <div className="mx-auto max-w-6xl px-6 py-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="text-xs text-zinc-500">
+            © {new Date().getFullYear()} Proof of Time
+          </div>
+
+          <div className="flex items-center gap-4">
+            {POT_ADDRESS ? (
+              <a
+                href={`https://basescan.org/address/${POT_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                title="View token contract on BaseScan"
+              >
+                View Token Contract ↗
+              </a>
+            ) : (
+              <span className="text-xs text-zinc-500">
+                Set <code className="text-zinc-400">NEXT_PUBLIC_POT_ADDRESS</code> to show contract link
+              </span>
+            )}
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
