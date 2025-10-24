@@ -1,4 +1,3 @@
-// app/launch/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
@@ -14,7 +13,6 @@ import {
 import { formatEther, formatUnits, parseAbi } from "viem";
 import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import Countdown from "@/components/Countdown";
 import LaunchShare from "@/components/LaunchShare";
 
 /** ========= Config ========= */
@@ -72,16 +70,9 @@ const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 function ts(unix?: bigint | number) {
   const u = typeof unix === "bigint" ? Number(unix) : unix;
   if (!u) return "—";
-  return (
-    new Date(u * 1000).toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    }) + ` (${tz})`
-  );
+  return new Date(u * 1000).toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: true,
+  }) + ` (${tz})`;
 }
 function rel(unix?: bigint | number) {
   const u = typeof unix === "bigint" ? Number(unix) : unix;
@@ -124,10 +115,9 @@ export default function LaunchPage() {
   const { data: claimReleaseB } =
     useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_UNLOCK,  functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
 
-  const lpUntil   = (LP_LOCK_UNIX_ENV || Number(lpUntilOnChain || 0)) || undefined;
-  const teamUntil = (TEAM_LOCK_UNIX_ENV || Number(teamUntilOnChain || 0)) || undefined;
-  const claimUnlock =
-    (CLAIM_UNLOCK_UNIX || Number(claimReleaseA || 0) || Number(claimReleaseB || 0)) || undefined;
+  const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpUntilOnChain || 0)) || undefined;
+  const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamUntilOnChain || 0)) || undefined;
+  const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimReleaseA || 0) || Number(claimReleaseB || 0)) || undefined;
 
   /** Wallet + buy */
   const { data: bal } = useBalance({ address, chainId: base.id });
@@ -172,31 +162,19 @@ export default function LaunchPage() {
     return { r, h, pct: h > 0 ? Math.min(100, (r / h) * 100) : 0 };
   }, [raised, hardCap]);
 
-  const saleEndUnix = Number(endAt || 0);
-
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
-      {/* === Main content === */}
+      {/* Centered container; equal columns on desktop; single column + centered on mobile */}
       <section className="mx-auto max-w-6xl px-6 py-8 md:py-10">
-        <div className="grid gap-8 lg:grid-cols-[420px,1fr]">
-          {/* Left: Buy + Share */}
-          <div className="space-y-6">
+        <div className="grid gap-8 lg:grid-cols-2">
+          {/* Left: Buy + Share (centered on mobile via mx-auto + max width) */}
+          <div className="space-y-6 max-w-[680px] w-full mx-auto">
             <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
-              <div className="text-center md:text-left flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                <h1 className="text-3xl md:text-2xl font-semibold tracking-wide">
-                  Launch <span className="text-[#BBA46A]">Your Token</span>
-                </h1>
-                {saleEndUnix ? (
-                  <div className="text-xs text-zinc-400">
-                    Ends in{" "}
-                    <span className="text-[#BBA46A] font-semibold">
-                      <Countdown target={saleEndUnix} />
-                    </span>
-                  </div>
-                ) : null}
-              </div>
+              <h1 className="text-3xl font-semibold tracking-wide text-center md:text-left">
+                Launch <span className="text-[#BBA46A]">Your Token</span>
+              </h1>
 
               <p className="mt-2 text-sm text-zinc-400 text-center md:text-left">
                 Fixed-price presale on <span className="text-[#BBA46A]">Base</span>. Unsold tokens seed liquidity on Aerodrome.
@@ -248,18 +226,18 @@ export default function LaunchPage() {
                 </div>
               </div>
 
-              {/* Share */}
+              {/* Share (this is the single place where the countdown appears, via component content) */}
               <div className="mt-6">
                 <LaunchShare />
               </div>
             </div>
 
-            {/* Pie chart: distribution */}
+            {/* Pie chart: distribution (not cut off, centered on mobile) */}
             <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide text-center md:text-left">
                 Token Distribution
               </h3>
-              <div className="mt-4 h-64 md:h-80 overflow-visible">
+              <div className="mt-4 h-64 md:h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -305,7 +283,7 @@ export default function LaunchPage() {
           </div>
 
           {/* Right: Details & links */}
-          <div className="space-y-6">
+          <div className="space-y-6 max-w-[680px] w-full mx-auto">
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Sale Information</h3>
               <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
