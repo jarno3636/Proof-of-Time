@@ -1,10 +1,8 @@
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
+import Link from "next/link";
 import RevealRelicsButton from "@/components/RevealRelicsButton";
-
-const HomeShareBar = dynamic(() => import("@/components/HomeShareBar"), { ssr: false });
-const RelicLegend  = dynamic(() => import("@/components/RelicLegend"),  { ssr: false });
 
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -15,6 +13,9 @@ function getSiteUrl() {
   return "http://localhost:3000";
 }
 const site = getSiteUrl();
+
+const HomeShareBar = dynamic(() => import("@/components/HomeShareBar"), { ssr: false });
+const RelicLegend  = dynamic(() => import("@/components/RelicLegend"),  { ssr: false });
 
 /* ---------- Metadata ---------- */
 export const metadata: Metadata = {
@@ -66,6 +67,24 @@ export default function Home() {
         {/* Share the app CTA */}
         <div className="mt-6">
           <HomeShareBar />
+        </div>
+
+        {/* Coming soon pill + greyed link to token page */}
+        <div className="mt-10 flex items-center gap-3">
+          <span className="inline-flex items-center rounded-full bg-zinc-800/60 px-3 py-1 text-xs font-semibold text-zinc-400 ring-1 ring-inset ring-zinc-700/60">
+            Coming soon
+          </span>
+
+          {/* Greyed-out link that looks disabled until launch */}
+          <Link
+            href="/pot"
+            aria-disabled
+            onClick={(e) => e.preventDefault()}
+            className="cursor-not-allowed rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-600 hover:text-zinc-600"
+            title="Token page is not yet live"
+          >
+            Proof of Time Token
+          </Link>
         </div>
       </section>
 
