@@ -1,11 +1,13 @@
-"use client";
-
+// app/page.tsx
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
-import RevealRelicsButton from "@/components/RevealRelicsButton";
-import HomeCountdown from "@/components/HomeCountdown";
-import LaunchShare from "@/components/LaunchShare";
+
+/* ---------- Client islands ---------- */
+const RevealRelicsButton = dynamic(() => import("@/components/RevealRelicsButton"), { ssr: false });
+const HomeCountdown      = dynamic(() => import("@/components/HomeCountdown"), { ssr: false });
+const LaunchShare        = dynamic(() => import("@/components/LaunchShare"), { ssr: false });
+const RelicLegend        = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -16,8 +18,6 @@ function getSiteUrl() {
   return "http://localhost:3000";
 }
 const site = getSiteUrl();
-
-const RelicLegend = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
 
 /* ---------- Metadata ---------- */
 export const metadata: Metadata = {
@@ -53,63 +53,97 @@ export default function Home() {
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
-      {/* ---------- Hero Section ---------- */}
-      <section className="mx-auto max-w-6xl px-6 pt-16 pb-20">
-        <h1 className="text-5xl md:text-6xl font-black tracking-tight">
-          Claim your<span className="text-zinc-400"> time on chain.</span>
-        </h1>
+      {/* ---------- Hero ---------- */}
+      <section className="mx-auto max-w-6xl px-6 pt-14 pb-10 md:pt-20 md:pb-16">
+        <div className="grid gap-8 md:grid-cols-[1.3fr,1fr] md:items-center">
+          {/* Headline + CTA */}
+          <div>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black leading-tight tracking-tight text-center md:text-left">
+              Claim your <span className="text-zinc-400">time on chain.</span>
+            </h1>
 
-        {/* Big gold CTA */}
-        <div className="mt-6">
-          <RevealRelicsButton size="lg" />
-        </div>
+            <p className="mt-5 max-w-2xl text-zinc-400 text-center md:text-left md:pr-10">
+              Proof of Time reveals your longest-held tokens on Base—turning consistent
+              holders into living records of patience, loyalty, and belief.
+            </p>
 
-        <p className="mt-6 max-w-2xl text-zinc-400">
-          Proof of Time reveals your longest-held tokens on Base — turning
-          consistent holders into living records of patience, loyalty, and belief.
-        </p>
-
-        {/* Token Launch Section */}
-        <div className="mt-10 space-y-4">
-          <div className="flex items-center flex-wrap gap-3">
-            <a
-              href="/launch"
-              className="rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-300 hover:text-zinc-100 transition"
-            >
-              Proof of Time Token
-            </a>
-
-            {hasCountdown && (
-              <span className="text-xs text-zinc-500">
-                Sale ends in{" "}
-                <span className="text-[#BBA46A] font-semibold">
-                  <HomeCountdown />
-                </span>
-              </span>
-            )}
+            <div className="mt-7 flex flex-col sm:flex-row sm:items-center gap-3 justify-center md:justify-start">
+              <RevealRelicsButton size="lg" />
+              <a
+                href="/launch"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
+              >
+                View Token Launch
+              </a>
+            </div>
           </div>
 
-          {/* Launch share bar (Farcaster + X) */}
-          <div className="max-w-md">
-            <LaunchShare />
+          {/* Token Launch card */}
+          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
+            <div className="flex items-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/pot.PNG"
+                alt="Proof of Time"
+                width={56}
+                height={56}
+                className="rounded-lg border border-zinc-800/60"
+              />
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold">Token Launch</h3>
+                {hasCountdown ? (
+                  <div className="text-xs text-zinc-500 mt-0.5">
+                    Sale ends in{" "}
+                    <span className="text-[#BBA46A] font-semibold">
+                      <HomeCountdown />
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-xs text-zinc-500 mt-0.5">Presale live on Base</div>
+                )}
+              </div>
+            </div>
+
+            <p className="mt-4 text-sm text-zinc-400">
+              Fixed-price presale with LP seeding and a 500M holder rewards program. Spread the word:
+            </p>
+
+            <div className="mt-4">
+              <LaunchShare />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href="/launch"
+                className="inline-flex items-center justify-center rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-2.5 text-sm font-semibold text-[#0b0e14] transition"
+              >
+                Go to Launch
+              </a>
+              <a
+                href="/pot"
+                className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
+              >
+                Holder Rewards (PoT)
+              </a>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ---------- Features ---------- */}
+      {/* ---------- Three-up features ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
             title="Discover Relics"
-            text="Each relic represents a token you’ve held through time — measured block by block, proof that you stayed the course."
+            text="Each relic represents a token you’ve held through time—measured block by block, proving you stayed the course."
           />
           <FeatureCard
             title="Track Your Journey"
-            text="View your altar to see how long your relics have endured and what streaks continue unbroken."
+            text="View your altar to see how long your relics have endured and which streaks remain unbroken."
           />
           <FeatureCard
             title="Celebrate Patience"
-            text="Show off your will to hold on — not through hype or minting, but by proving your commitment directly from the chain."
+            text="Show off your will to hold on—not through hype or minting, but straight from the chain."
           />
         </div>
       </section>
