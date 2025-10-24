@@ -1,5 +1,4 @@
-// app/page.tsx  (Server Component — no "use client")
-
+// app/page.tsx
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
@@ -13,7 +12,7 @@ const RelicLegend        = dynamic(() => import("@/components/RelicLegend"), { s
 /* ---------- Stable absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env; // e.g. https://proof-of-time.xyz
+  if (env) return env;
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
@@ -55,7 +54,13 @@ export default function Home() {
       <Nav />
 
       {/* ---------- Hero ---------- */}
-      <section className="mx-auto max-w-6xl px-6 pt-14 pb-10 md:pt-20 md:pb-16">
+      <section
+        className="
+          mx-auto max-w-6xl px-6
+          pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-20
+          pb-12 md:pb-16
+        "
+      >
         <div className="grid gap-8 md:grid-cols-2 md:items-start">
           {/* Headline + CTA */}
           <div>
@@ -79,7 +84,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Token Launch card (single countdown; no image) */}
+          {/* Token Launch card (one countdown only) */}
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
             <h3 className="text-lg font-semibold">Token Launch</h3>
 
@@ -96,6 +101,7 @@ export default function Home() {
               </div>
             )}
 
+            {/* Share row (Farcaster + X) */}
             <div className="mt-4">
               <LaunchShare />
             </div>
@@ -118,7 +124,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ---------- Three-up features ---------- */}
+      {/* ---------- Features ---------- */}
       <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
@@ -148,7 +154,6 @@ export default function Home() {
   );
 }
 
-/* ---------- Feature Card ---------- */
 function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5">
