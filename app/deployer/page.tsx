@@ -47,6 +47,16 @@ const PRESALE_ABI = parseAbi([
   "function buy() payable",
 ] as const);
 
+/** ========= Project Links (hard-coded per your deploys) ========= */
+const LINKS = {
+  token: "https://basescan.org/address/0x098bbeb9e36ba67dd9ded4d1428bd384569db2ad",
+  liq:   "https://basescan.org/address/0x793ec280d1fd72ecabedfd984f11a39a50e1c5b7",
+  presale: "https://basescan.org/address/0x63206e25648847033de7a4e4e186f2814ce7a063",
+  timelock: "https://basescan.org/address/0xbeA426A7D608F746Ed843a8EeAF5c09BA971A793",
+  claim: "https://basescan.org/address/0xf3a5f12eb334a63b2ea66310381cd0f0d77b0a77",
+  potPage: POT_LINK || "/pot",
+};
+
 /** ========= Helpers ========= */
 const fmt = (n?: bigint | number, digits = 4) => {
   if (n === undefined || n === null) return "—";
@@ -238,58 +248,77 @@ export default function LaunchPage() {
           </div>
 
           {/* Right: Details & links */}
-          <div className="space-y-6">
-            {/* Info table */}
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
-              <h3 className="text-lg font-semibold text-[${GOLD}]">Sale Information</h3>
-              <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-zinc-800/60">
-                    <Row k="Price" v={`${fmt18(price as bigint, 0)} tokens / ETH`} />
-                    <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
-                    <Row k="Min per wallet" v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
-                    <Row k="Max per wallet" v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
-                    <Row k="Hard cap" v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
-                    <Row k="Tokens sold" v={`${fmt18(sold as bigint, 0)}`} />
-                    <Row k="Sale window" v={`${ts(startAt as bigint)} → ${ts(endAt as bigint)}`} />
-                    <Row k="Chain" v="Base (8453)" />
-                    {LP_LOCK_UNIX ? <Row k="LP lock until" v={ts(LP_LOCK_UNIX)} /> : null}
-                    {TEAM_LOCK_UNIX ? <Row k="Team lock until" v={ts(TEAM_LOCK_UNIX)} /> : null}
-                  </tbody>
-                </table>
-              </div>
+<div className="space-y-6">
+  {/* Info table */}
+  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+    <h3 className="text-lg font-semibold text-[${GOLD}]">Sale Information</h3>
+    <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-zinc-800/60">
+          <Row k="Price" v={`${fmt18(price as bigint, 0)} tokens / ETH`} />
+          <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
+          <Row k="Min per wallet" v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
+          <Row k="Max per wallet" v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
+          <Row k="Hard cap" v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
+          <Row k="Tokens sold" v={`${fmt18(sold as bigint, 0)}`} />
+          <Row k="Sale window" v={`${ts(startAt as bigint)} → ${ts(endAt as bigint)}`} />
+          <Row k="Chain" v="Base (8453)" />
+          {LP_LOCK_UNIX ? <Row k="LP lock until" v={ts(LP_LOCK_UNIX)} /> : null}
+          {TEAM_LOCK_UNIX ? <Row k="Team lock until" v={ts(TEAM_LOCK_UNIX)} /> : null}
+        </tbody>
+      </table>
+    </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                {PRESALE_ADDRESS && (
-                  <a
-                    href={`https://basescan.org/address/${PRESALE_ADDRESS}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-                  >
-                    View Presale ↗
-                  </a>
-                )}
-                {TOKEN_ADDRESS && (
-                  <a
-                    href={`https://basescan.org/address/${TOKEN_ADDRESS}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-                  >
-                    View Token ↗
-                  </a>
-                )}
-                <Link
-                  href={POT_LINK}
-                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
-                >
-                  Holder Rewards (PoT) ↗
-                </Link>
-              </div>
-            </div>
+    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+      {PRESALE_ADDRESS && (
+        <a
+          href={`https://basescan.org/address/${PRESALE_ADDRESS}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+        >
+          View Presale ↗
+        </a>
+      )}
+      {TOKEN_ADDRESS && (
+        <a
+          href={`https://basescan.org/address/${TOKEN_ADDRESS}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+        >
+          View Token ↗
+        </a>
+      )}
+      <Link
+        href={POT_LINK}
+        className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+      >
+        Holder Rewards (PoT) ↗
+      </Link>
+    </div>
+  </div>
 
-            {/* Disclaimer */}
+  {/* NEW: Contracts & Links (above disclaimer) */}
+  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
+    <h3 className="text-lg font-semibold text-[${GOLD}]">Contracts & Links</h3>
+    <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <A href={LINKS.token} label="PoT Token" />
+      <A href={LINKS.presale} label="Presale Fixed" />
+      <A href={LINKS.liq} label="Liquidity Manager" />
+      <A href={LINKS.timelock} label="Simple Token Timelock" />
+      <A href={LINKS.claim} label="TimeLockClaim" />
+      <Link
+        href={LINKS.potPage}
+        className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[${GOLD}] hover:text-[${GOLD_SOFT}] hover:border-[${GOLD}]/50 transition"
+      >
+        Holder Rewards Page ↗
+      </Link>
+    </div>
+    <p className="mt-3 text-xs text-zinc-500">All links open in a new tab when applicable.</p>
+  </div>
+
+  {/* Disclaimer */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
               <h3 className="text-lg font-semibold text-[${GOLD}]">Disclaimer</h3>
               <p className="mt-2 text-xs leading-relaxed text-zinc-400">
