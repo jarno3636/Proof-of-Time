@@ -62,11 +62,11 @@ const CLAIMLOCK_ABI = parseAbi([
 
 /** ========= Links ========= */
 const LINKS = {
-  token:   "https://basescan.org/address/0x098bbeb9e36ba67dd9ded4d1428bd384569db2ad",
-  liq:     LIQ_ADDRESS ? `https://basescan.org/address/${LIQ_ADDRESS}` : "",
-  presale: "https://basescan.org/address/0x63206e25648847033de7a4e4e186f2814ce7a063",
-  timelock: TEAMLOCK_ADDR ? `https://basescan.org/address/${TEAMLOCK_ADDR}` : "",
-  claim:    CLAIM_ADDR ? `https://basescan.org/address/${CLAIM_ADDR}` : "",
+  token:   TOKEN_ADDRESS   ? `https://basescan.org/address/${TOKEN_ADDRESS}`     : "",
+  liq:     LIQ_ADDRESS     ? `https://basescan.org/address/${LIQ_ADDRESS}`       : "",
+  presale: PRESALE_ADDRESS ? `https://basescan.org/address/${PRESALE_ADDRESS}`   : "",
+  timelock: TEAMLOCK_ADDR  ? `https://basescan.org/address/${TEAMLOCK_ADDR}`     : "",
+  claim:    CLAIM_ADDR     ? `https://basescan.org/address/${CLAIM_ADDR}`        : "",
   potPage: POT_LINK || "/pot",
 };
 
@@ -127,14 +127,16 @@ export default function LaunchPage() {
   const { data: claimA } =
     useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
   const { data: claimB } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  function: "unlockAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } } as any);
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
 
   const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpOnChain || 0)) || undefined;
   const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamOnChain || 0)) || undefined;
   const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimA || 0) || Number(claimB || 0)) || undefined;
 
-  /** Claim contract resolve */
-  const claimAddr = (claimFromPresale as `0x${string}` | undefined) || (CLAIM_ADDR || undefined);
+  /** Claim contract resolve (presale.claim() has priority if set and non-zero) */
+  const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+  const claimFrom = (claimFromPresale as `0x${string}` | undefined);
+  const claimAddr = claimFrom && claimFrom !== ZERO_ADDR ? claimFrom : (CLAIM_ADDR || undefined);
 
   /** Claim lock reads */
   const { data: unlockAt, refetch: refetchUnlockAt } = useReadContract({
