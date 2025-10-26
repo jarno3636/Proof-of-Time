@@ -103,7 +103,7 @@ export default function LaunchPage() {
   }, []);
 
   /** Reads — Presale (force Base chain for all reads) */
-const readBase = { chainId: base.id };
+  const readBase = { chainId: base.id };
 
   const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth", ...readBase });
   const { data: startAt }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "startAt",           ...readBase });
