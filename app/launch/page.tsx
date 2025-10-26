@@ -16,17 +16,15 @@ import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import LaunchShare from "@/components/LaunchShare";
 
-/** ========= Config ========= */
+/** ========= Config (from env) ========= */
 const PRESALE_ADDRESS = (process.env.NEXT_PUBLIC_PRESALE_ADDRESS || "").trim() as `0x${string}`;
 const TOKEN_ADDRESS   = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS   || "").trim() as `0x${string}`;
 const POT_LINK        = process.env.NEXT_PUBLIC_POT_LINK || "/pot";
 
-// Optional: on-chain lock readers (fallbacks), but we’ll prefer envs if present.
-const LIQ_ADDRESS   = (process.env.NEXT_PUBLIC_LIQ_ADDRESS || "").trim() as `0x${string}`;
-const TEAMLOCK_ADDR = (process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS || "").trim() as `0x${string}`;
-const CLAIM_ADDR    = (process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS || "").trim() as `0x${string}`;
+const LIQ_ADDRESS     = (process.env.NEXT_PUBLIC_LIQ_ADDRESS || "").trim() as `0x${string}`;
+const TEAMLOCK_ADDR   = (process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS || "").trim() as `0x${string}`;
+const CLAIM_ADDR      = (process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS || "").trim() as `0x${string}`;
 
-// If you’ve set these, we’ll show them directly:
 const LP_LOCK_UNIX_ENV   = Number(process.env.NEXT_PUBLIC_LP_LOCK_UNIX || 0);
 const TEAM_LOCK_UNIX_ENV = Number(process.env.NEXT_PUBLIC_TEAM_LOCK_UNIX || 0);
 const CLAIM_UNLOCK_UNIX  = Number(process.env.NEXT_PUBLIC_CLAIM_UNLOCK_UNIX || 0);
@@ -48,25 +46,24 @@ const PRESALE_ABI = parseAbi([
   "function buy() payable",
 ] as const);
 
-const LIQ_ABI       = parseAbi([ "function lpLockedUntil() view returns (uint256)" ] as const);
-const TEAMLOCK_ABI  = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
-const CLAIM_ABI_A   = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
-const CLAIM_ABI_B   = parseAbi([ "function unlockAt() view returns (uint256)" ] as const);
+const LIQ_ABI      = parseAbi([ "function lpLockedUntil() view returns (uint256)" ] as const);
+const TEAMLOCK_ABI = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
+const CLAIM_ABI_A  = parseAbi([ "function releaseAt() view returns (uint256)" ] as const);
+const CLAIM_ABI_B  = parseAbi([ "function unlockAt() view returns (uint256)" ] as const);
 
-// Minimal ClaimLock ABI for UI
 const CLAIMLOCK_ABI = parseAbi([
   "function claim()",
   "function claimable(address) view returns (uint256)",
   "function unlockAt() view returns (uint256)",
 ] as const);
 
-/** ========= Links ========= */
+/** ========= Links (from envs) ========= */
 const LINKS = {
   token:   TOKEN_ADDRESS   ? `https://basescan.org/address/${TOKEN_ADDRESS}`     : "",
-  liq:     LIQ_ADDRESS     ? `https://basescan.org/address/${LIQ_ADDRESS}`       : "",
   presale: PRESALE_ADDRESS ? `https://basescan.org/address/${PRESALE_ADDRESS}`   : "",
-  timelock: TEAMLOCK_ADDR  ? `https://basescan.org/address/${TEAMLOCK_ADDR}`     : "",
-  claim:    CLAIM_ADDR     ? `https://basescan.org/address/${CLAIM_ADDR}`        : "",
+  liq:     LIQ_ADDRESS     ? `https://basescan.org/address/${LIQ_ADDRESS}`       : "",
+  timelock:TEAMLOCK_ADDR   ? `https://basescan.org/address/${TEAMLOCK_ADDR}`     : "",
+  claim:   CLAIM_ADDR      ? `https://basescan.org/address/${CLAIM_ADDR}`        : "",
   potPage: POT_LINK || "/pot",
 };
 
@@ -92,7 +89,7 @@ function rel(unix?: bigint | number) {
 }
 
 /** Palette tuned for contrast on dark */
-const PIE_COLORS = ["#F1E1A6", "#A3925D", "#6B6242", "#2B2A25"]; // lightest → darkest
+const PIE_COLORS = ["#F1E1A6", "#A3925D", "#6B6242", "#2B2A25"];
 
 export default function LaunchPage() {
   const { address, isConnected, chainId } = useAccount();
@@ -105,38 +102,39 @@ export default function LaunchPage() {
     return () => clearInterval(id);
   }, []);
 
-  /** Reads — Presale */
-  const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth" });
-  const { data: startAt }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "startAt" });
-  const { data: endAt }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "endAt" });
-  const { data: minWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "minPerWalletWei" });
-  const { data: maxWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "maxPerWalletWei" });
-  const { data: hardCap }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "hardCapWei" });
-  const { data: saleSupply } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "saleSupply" });
-  const { data: raised }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei",  query: { refetchInterval: 5000 } });
-  const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens", query: { refetchInterval: 5000 } });
-  const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",            query: { refetchInterval: 5000 } });
-  const { data: finalized }  = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "finalized",       query: { refetchInterval: 5000 } });
-  const { data: claimFromPresale } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim" });
+  /** Reads — Presale (force Base chain for all reads) */
+  const readBase = { chainId: base.id as const };
+
+  const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth", ...readBase });
+  const { data: startAt }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "startAt",           ...readBase });
+  const { data: endAt }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "endAt",             ...readBase });
+  const { data: minWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "minPerWalletWei",   ...readBase });
+  const { data: maxWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "maxPerWalletWei",   ...readBase });
+  const { data: hardCap }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "hardCapWei",        ...readBase });
+  const { data: saleSupply } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "saleSupply",        ...readBase });
+  const { data: raised }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei",    query: { refetchInterval: 5000 }, ...readBase });
+  const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens",   query: { refetchInterval: 5000 }, ...readBase });
+  const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",              query: { refetchInterval: 5000 }, ...readBase });
+  const { data: finalized }  = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "finalized",         query: { refetchInterval: 5000 }, ...readBase });
+  const { data: claimFromPresale } =
+    useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim", ...readBase });
 
   /** Reads — Locks (prefer envs) */
   const { data: lpOnChain } =
-    useReadContract({ address: LIQ_ADDRESS, abi: LIQ_ABI, functionName: "lpLockedUntil", query: { enabled: !!LIQ_ADDRESS && !LP_LOCK_UNIX_ENV } });
+    useReadContract({ address: LIQ_ADDRESS, abi: LIQ_ABI, functionName: "lpLockedUntil", query: { enabled: !!LIQ_ADDRESS && !LP_LOCK_UNIX_ENV }, ...readBase });
   const { data: teamOnChain } =
-    useReadContract({ address: TEAMLOCK_ADDR, abi: TEAMLOCK_ABI, functionName: "releaseAt", query: { enabled: !!TEAMLOCK_ADDR && !TEAM_LOCK_UNIX_ENV } });
+    useReadContract({ address: TEAMLOCK_ADDR, abi: TEAMLOCK_ABI, functionName: "releaseAt", query: { enabled: !!TEAMLOCK_ADDR && !TEAM_LOCK_UNIX_ENV }, ...readBase });
   const { data: claimA } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...readBase });
   const { data: claimB } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX } });
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...readBase });
 
   const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpOnChain || 0)) || undefined;
   const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamOnChain || 0)) || undefined;
   const claimUnlock = (CLAIM_UNLOCK_UNIX || Number(claimA || 0) || Number(claimB || 0)) || undefined;
 
-  /** Claim contract resolve (presale.claim() has priority if set and non-zero) */
-  const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-  const claimFrom = (claimFromPresale as `0x${string}` | undefined);
-  const claimAddr = claimFrom && claimFrom !== ZERO_ADDR ? claimFrom : (CLAIM_ADDR || undefined);
+  /** Claim contract resolve */
+  const claimAddr = (claimFromPresale as `0x${string}` | undefined) || (CLAIM_ADDR || undefined);
 
   /** Claim lock reads */
   const { data: unlockAt, refetch: refetchUnlockAt } = useReadContract({
@@ -144,27 +142,25 @@ export default function LaunchPage() {
     abi: CLAIMLOCK_ABI,
     functionName: "unlockAt",
     query: { enabled: !!claimAddr, refetchInterval: 30_000 },
+    ...readBase,
   });
 
-  const {
-    data: userClaimable,
-    refetch: refetchClaimable,
-  } = useReadContract({
+  const { data: userClaimable, refetch: refetchClaimable } = useReadContract({
     address: claimAddr,
     abi: CLAIMLOCK_ABI,
     functionName: "claimable",
     args: [address as `0x${string}`],
     query: { enabled: !!claimAddr && !!address, refetchInterval: 30_000 },
+    ...readBase,
   });
 
-  /** Wallet + write contracts (buy/claim share the same write + receipt hooks) */
+  /** Wallet + writes */
   const { data: bal } = useBalance({ address, chainId: base.id });
   const { writeContract, data: hash, isPending } = useWriteContract();
   const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({ hash });
 
   useEffect(() => {
     if (confirmed && lastTx === "claim") {
-      // refresh claim figures after a successful claim
       refetchClaimable?.();
       refetchUnlockAt?.();
       setLastTx(null);
@@ -173,6 +169,7 @@ export default function LaunchPage() {
 
   /** Buy gating */
   const canBuy = useMemo(() => {
+    if (!PRESALE_ADDRESS) return false;
     if (!isConnected || chainId !== base.id) return false;
     const v = Number(ethAmount || 0);
     const min = Number(minWei ? formatEther(minWei as bigint) : 0);
@@ -183,7 +180,7 @@ export default function LaunchPage() {
     if (max && v > max) return false;
     if (bal && v > Number(bal.formatted)) return false;
     return true;
-  }, [isConnected, chainId, ethAmount, minWei, maxWei, bal, isLive]);
+  }, [PRESALE_ADDRESS, isConnected, chainId, ethAmount, minWei, maxWei, bal, isLive]);
 
   const onBuy = () => {
     if (!PRESALE_ADDRESS || !ethAmount) return;
@@ -192,7 +189,7 @@ export default function LaunchPage() {
       address: PRESALE_ADDRESS,
       abi: PRESALE_ABI,
       functionName: "buy",
-      value: parseEther(ethAmount), // precise
+      value: parseEther(ethAmount),
       chainId: base.id,
     });
   };
@@ -224,7 +221,7 @@ export default function LaunchPage() {
     });
   };
 
-  /** Distribution */
+  /** Distribution (static copy) */
   const distData = [
     { name: "Presale (60%)", value: 300_000_000 },
     { name: "LP & Treasury (37.5%)", value: 187_500_000 },
@@ -257,9 +254,7 @@ export default function LaunchPage() {
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
       <Nav />
 
-      {/* Centered container; single column until lg; cards themselves capped & centered */}
       <section className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 md:py-10">
-        {/* Top status pill */}
         <div className="mb-6 flex justify-center">
           <span className="inline-flex items-center rounded-full bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 ring-1 ring-zinc-800/70">
             {saleStatus}
@@ -305,7 +300,6 @@ export default function LaunchPage() {
                     {isPending && lastTx === "buy" ? "Submitting…" : confirming && lastTx === "buy" ? "Confirming…" : "Buy"}
                   </button>
                 </div>
-                {confirmed && lastTx === "buy" && <div className="text-xs text-emerald-400">Purchase confirmed ✔</div>}
                 {isConnected && chainId !== base.id && (
                   <div className="text-xs text-red-400">Switch to Base to continue.</div>
                 )}
@@ -386,9 +380,7 @@ export default function LaunchPage() {
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Claim Tokens</h3>
 
               {!claimAddr ? (
-                <p className="mt-2 text-sm text-zinc-400">
-                  Claim contract not set yet.
-                </p>
+                <p className="mt-2 text-sm text-zinc-400">Claim contract not set yet.</p>
               ) : (
                 <>
                   <p className="mt-2 text-sm text-zinc-400">
@@ -454,9 +446,9 @@ export default function LaunchPage() {
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                {PRESALE_ADDRESS && (
+                {LINKS.presale && (
                   <a
-                    href={`https://basescan.org/address/${PRESALE_ADDRESS}`}
+                    href={LINKS.presale}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
@@ -464,9 +456,9 @@ export default function LaunchPage() {
                     View Presale ↗
                   </a>
                 )}
-                {TOKEN_ADDRESS && (
+                {LINKS.token && (
                   <a
-                    href={`https://basescan.org/address/${TOKEN_ADDRESS}`}
+                    href={LINKS.token}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
@@ -475,7 +467,7 @@ export default function LaunchPage() {
                   </a>
                 )}
                 <Link
-                  href={POT_LINK}
+                  href={LINKS.potPage}
                   className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
                 >
                   Holder Rewards (PoT) ↗
@@ -487,11 +479,11 @@ export default function LaunchPage() {
             <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
               <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Contracts & Links</h3>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <A href={LINKS.token}   label="PoT Token" />
-                <A href={LINKS.presale} label="Presale Fixed" />
-                {LINKS.liq && <A href={LINKS.liq} label="Liquidity Manager" />}
+                {LINKS.token    && <A href={LINKS.token}    label="PoT Token" />}
+                {LINKS.presale  && <A href={LINKS.presale}  label="Presale Fixed" />}
+                {LINKS.liq      && <A href={LINKS.liq}      label="Liquidity Manager" />}
                 {LINKS.timelock && <A href={LINKS.timelock} label="Simple Token Timelock" />}
-                {LINKS.claim && <A href={LINKS.claim} label="TimeLockClaim" />}
+                {LINKS.claim    && <A href={LINKS.claim}    label="TimeLockClaim" />}
                 <Link
                   href={LINKS.potPage}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
@@ -514,7 +506,6 @@ export default function LaunchPage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-zinc-800/60 bg-zinc-900/20">
         <div className="mx-auto w-full max-w-6xl px-6 py-6 flex items-center justify-center">
           <div className="text-xs text-zinc-500">© {new Date().getFullYear()} Proof of Time</div>
