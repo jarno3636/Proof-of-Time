@@ -29,7 +29,7 @@ const POT_ABI = parseAbi([
 ] as const);
 
 /** ========= Helpers ========= */
-const readBase = { chainId: base.id as const };
+const READ_BASE: { chainId: number } = { chainId: base.id };
 const q = { retry: 0, refetchOnWindowFocus: false } as const;
 
 function fmt18(n?: bigint, digits = 4) {
