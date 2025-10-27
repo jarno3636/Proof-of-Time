@@ -70,7 +70,7 @@ export default function PotPage() {
     abi: POT_ABI,
     functionName: "holderInfo",
     args: [address as `0x${string}`],
-    ...readBase,
+    ...READ_BASE,
     query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
   });
 
@@ -79,7 +79,7 @@ export default function PotPage() {
     abi: POT_ABI,
     functionName: "claimable",
     args: [address as `0x${string}`],
-    ...readBase,
+    ...READ_BASE,
     query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
   });
 
@@ -88,7 +88,7 @@ export default function PotPage() {
     abi: POT_ABI,
     functionName: "getHolderTier",
     args: [address as `0x${string}`],
-    ...readBase,
+    ...READ_BASE,
     query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 60_000 },
   });
 
@@ -96,7 +96,7 @@ export default function PotPage() {
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "currentWeek",
-    ...readBase,
+    ...READ_BASE,
     query: { ...q, refetchInterval: 60_000 },
   });
 
@@ -104,7 +104,7 @@ export default function PotPage() {
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "baseRateBps",
-    ...readBase,
+    ...READ_BASE,
     query: q,
   });
 
@@ -112,7 +112,7 @@ export default function PotPage() {
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "halvingIntervalWeeks",
-    ...readBase,
+    ...READ_BASE,
     query: q,
   });
 
