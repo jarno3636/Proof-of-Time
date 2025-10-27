@@ -16,14 +16,17 @@ import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import LaunchShare from "@/components/LaunchShare";
 
-/** ========= Config (from env) ========= */
-const PRESALE_ADDRESS = (process.env.NEXT_PUBLIC_PRESALE_ADDRESS || "").trim() as `0x${string}`;
-const TOKEN_ADDRESS   = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS   || "").trim() as `0x${string}`;
+/** ========= Config (from env) =========
+ * viem complains if a mixed-case address doesn't match checksum.
+ * Lowercasing avoids that requirement and is accepted by viem.
+ */
+const PRESALE_ADDRESS = ((process.env.NEXT_PUBLIC_PRESALE_ADDRESS || "").trim().toLowerCase() || "") as `0x${string}`;
+const TOKEN_ADDRESS   = ((process.env.NEXT_PUBLIC_TOKEN_ADDRESS   || "").trim().toLowerCase() || "") as `0x${string}`;
 const POT_LINK        = process.env.NEXT_PUBLIC_POT_LINK || "/pot";
 
-const LIQ_ADDRESS     = (process.env.NEXT_PUBLIC_LIQ_ADDRESS || "").trim() as `0x${string}`;
-const TEAMLOCK_ADDR   = (process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS || "").trim() as `0x${string}`;
-const CLAIM_ADDR      = (process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS || "").trim() as `0x${string}`;
+const LIQ_ADDRESS     = ((process.env.NEXT_PUBLIC_LIQ_ADDRESS           || "").trim().toLowerCase() || "") as `0x${string}`;
+const TEAMLOCK_ADDR   = ((process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS     || "").trim().toLowerCase() || "") as `0x${string}`;
+const CLAIM_ADDR      = ((process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS    || "").trim().toLowerCase() || "") as `0x${string}`;
 
 const LP_LOCK_UNIX_ENV   = Number(process.env.NEXT_PUBLIC_LP_LOCK_UNIX || 0);
 const TEAM_LOCK_UNIX_ENV = Number(process.env.NEXT_PUBLIC_TEAM_LOCK_UNIX || 0);
@@ -375,136 +378,136 @@ export default function LaunchPage() {
           </div>
 
           {/* Right column */}
-  <div className="w-full max-w-[640px]">
-    {/* Claim card */}
-    <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
-      <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Claim Tokens</h3>
+          <div className="w-full max-w-[640px]">
+            {/* Claim card */}
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Claim Tokens</h3>
 
-      {!claimAddr ? (
-        <p className="mt-2 text-sm text-zinc-400">Claim contract not set yet.</p>
-      ) : (
-        <>
-          <p className="mt-2 text-sm text-zinc-400">
-            {finalized ? (
-              isUnlocked ? (
-                <>Your claimable: <span className="text-[#BBA46A] font-medium">{fmt18(userClaimable as bigint, 0)}</span> tokens</>
+              {!claimAddr ? (
+                <p className="mt-2 text-sm text-zinc-400">Claim contract not set yet.</p>
               ) : (
-                <>Unlocks at <span className="text-[#BBA46A]">{ts(unlockAt as bigint)}</span> ({rel(Number(unlockAt))})</>
-              )
-            ) : (
-              <>Claims open after presale is finalized.</>
-            )}
-          </p>
+                <>
+                  <p className="mt-2 text-sm text-zinc-400">
+                    {finalized ? (
+                      isUnlocked ? (
+                        <>Your claimable: <span className="text-[#BBA46A] font-medium">{fmt18(userClaimable as bigint, 0)}</span> tokens</>
+                      ) : (
+                        <>Unlocks at <span className="text-[#BBA46A]">{ts(unlockAt as bigint)}</span> ({rel(Number(unlockAt))})</>
+                      )
+                    ) : (
+                      <>Claims open after presale is finalized.</>
+                    )}
+                  </p>
 
-          <div className="mt-4 flex gap-3">
-            <button
-              onClick={onClaim}
-              disabled={!canClaim}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                canClaim
-                  ? "bg-[#BBA46A] text-[#0b0e14] hover:bg-[#d6c289]"
-                  : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-              }`}
-            >
-              {isPending && lastTx === "claim" ? "Submitting…" : confirming && lastTx === "claim" ? "Confirming…" : "Claim"}
-            </button>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={onClaim}
+                      disabled={!canClaim}
+                      className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        canClaim
+                          ? "bg-[#BBA46A] text-[#0b0e14] hover:bg-[#d6c289]"
+                          : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                      }`}
+                    >
+                      {isPending && lastTx === "claim" ? "Submitting…" : confirming && lastTx === "claim" ? "Confirming…" : "Claim"}
+                    </button>
 
-            {claimAddr && (
-              <a
-                href={`https://basescan.org/address/${claimAddr}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 text-sm font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-              >
-                View Claim Contract ↗
-              </a>
-            )}
+                    {claimAddr && (
+                      <a
+                        href={`https://basescan.org/address/${claimAddr}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 text-sm font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                      >
+                        View Claim Contract ↗
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sale info */}
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Sale Information</h3>
+              <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-zinc-800/60">
+                    <Row k="Price"           v={`${price ? fmt18(price as bigint, 0) : "…"} tokens / ETH`} />
+                    <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
+                    <Row k="Min per wallet"  v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
+                    <Row k="Max per wallet"  v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
+                    <Row k="Hard cap"        v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
+                    <Row k="Tokens sold"     v={`${fmt18(sold as bigint, 0)}`} />
+                    <Row k="Sale window"     v={`${ts(startAt as bigint)}  →  ${ts(endAt as bigint)}`} />
+                    <Row k="Status"          v={saleStatus} />
+                    <Row k="Chain"           v="Base (8453)" />
+                    {(LP_LOCK_UNIX_ENV || lpOnChain)     && <Row k="LP lock until"   v={`${ts(lpUntil!)}  ·  ${rel(lpUntil!)}`} />}
+                    {(TEAM_LOCK_UNIX_ENV || teamOnChain) && <Row k="Team lock until" v={`${ts(teamUntil!)}  ·  ${rel(teamUntil!)}`} />}
+                    {(CLAIM_UNLOCK_UNIX || claimA || claimB || unlockAt) &&
+                      <Row k="Claim unlocks" v={`${ts((unlockAt as bigint) || claimUnlock!)}  ·  ${rel(Number((unlockAt as bigint) || claimUnlock!))}`} />}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                {LINKS.presale && (
+                  <a
+                    href={LINKS.presale}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                  >
+                    View Presale ↗
+                  </a>
+                )}
+                {LINKS.token && (
+                  <a
+                    href={LINKS.token}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                  >
+                    View Token ↗
+                  </a>
+                )}
+                <Link
+                  href={LINKS.potPage}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                >
+                  Holder Rewards (PoT) ↗
+                </Link>
+              </div>
+            </div>
+
+            {/* Contracts & Links */}
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Contracts & Links</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {LINKS.token    && <A href={LINKS.token}    label="PoT Token" />}
+                {LINKS.presale  && <A href={LINKS.presale}  label="Presale Fixed" />}
+                {LINKS.liq      && <A href={LINKS.liq}      label="Liquidity Manager" />}
+                {LINKS.timelock && <A href={LINKS.timelock} label="Simple Token Timelock" />}
+                {LINKS.claim    && <A href={LINKS.claim}    label="TimeLockClaim" />}
+                <Link
+                  href={LINKS.potPage}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
+                >
+                  Holder Rewards Page ↗
+                </Link>
+              </div>
+              <p className="mt-3 text-xs text-zinc-500">All links open in a new tab when applicable.</p>
+            </div>
+
+            {/* Disclaimer */}
+            <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Disclaimer</h3>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                This page provides access to a token presale smart contract deployed on Base. Tokens have no promise of returns,
+                dividends, or voting rights. Participation may be restricted in certain jurisdictions. Do your own research.
+              </p>
+            </div>
           </div>
-        </>
-      )}
-    </div>
-
-    {/* Sale info */}
-    <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
-      <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Sale Information</h3>
-      <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-zinc-800/60">
-            <Row k="Price"           v={`${price ? fmt18(price as bigint, 0) : "…"} tokens / ETH`} />
-            <Row k="Sale allocation" v={`${fmt18(saleSupply as bigint, 0)} tokens`} />
-            <Row k="Min per wallet"  v={`${minWei ? Number(formatEther(minWei as bigint)) : "—"} ETH`} />
-            <Row k="Max per wallet"  v={`${maxWei ? Number(formatEther(maxWei as bigint)) : "—"} ETH`} />
-            <Row k="Hard cap"        v={`${hardCap ? Number(formatEther(hardCap as bigint)) : "—"} ETH`} />
-            <Row k="Tokens sold"     v={`${fmt18(sold as bigint, 0)}`} />
-            <Row k="Sale window"     v={`${ts(startAt as bigint)}  →  ${ts(endAt as bigint)}`} />
-            <Row k="Status"          v={saleStatus} />
-            <Row k="Chain"           v="Base (8453)" />
-            {(LP_LOCK_UNIX_ENV || lpOnChain)     && <Row k="LP lock until"   v={`${ts(lpUntil!)}  ·  ${rel(lpUntil!)}`} />}
-            {(TEAM_LOCK_UNIX_ENV || teamOnChain) && <Row k="Team lock until" v={`${ts(teamUntil!)}  ·  ${rel(teamUntil!)}`} />}
-            {(CLAIM_UNLOCK_UNIX || claimA || claimB || unlockAt) &&
-              <Row k="Claim unlocks" v={`${ts((unlockAt as bigint) || claimUnlock!)}  ·  ${rel(Number((unlockAt as bigint) || claimUnlock!))}`} />}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-        {LINKS.presale && (
-          <a
-            href={LINKS.presale}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-          >
-            View Presale ↗
-          </a>
-        )}
-        {LINKS.token && (
-          <a
-            href={LINKS.token}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-          >
-            View Token ↗
-          </a>
-        )}
-        <Link
-          href={LINKS.potPage}
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-        >
-          Holder Rewards (PoT) ↗
-        </Link>
-      </div>
-    </div>
-
-    {/* Contracts & Links */}
-    <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
-      <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Contracts & Links</h3>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {LINKS.token    && <A href={LINKS.token}    label="PoT Token" />}
-        {LINKS.presale  && <A href={LINKS.presale}  label="Presale Fixed" />}
-        {LINKS.liq      && <A href={LINKS.liq}      label="Liquidity Manager" />}
-        {LINKS.timelock && <A href={LINKS.timelock} label="Simple Token Timelock" />}
-        {LINKS.claim    && <A href={LINKS.claim}    label="TimeLockClaim" />}
-        <Link
-          href={LINKS.potPage}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-        >
-          Holder Rewards Page ↗
-        </Link>
-      </div>
-      <p className="mt-3 text-xs text-zinc-500">All links open in a new tab when applicable.</p>
-    </div>
-
-    {/* Disclaimer */}
-    <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6 md:p-7">
-      <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide">Disclaimer</h3>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-400">
-        This page provides access to a token presale smart contract deployed on Base. Tokens have no promise of returns,
-        dividends, or voting rights. Participation may be restricted in certain jurisdictions. Do your own research.
-      </p>
-    </div>
-  </div>
         </div>
       </section>
 
