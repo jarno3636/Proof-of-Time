@@ -29,7 +29,8 @@ const POT_ABI = parseAbi([
 ] as const);
 
 /** ========= Helpers ========= */
-const readBase = { chainId: base.id };
+// Always read from Base regardless of wallet chain
+const READ_BASE: { chainId: number } = { chainId: base.id };
 
 function fmt18(n?: bigint, digits = 4) {
   if (n === undefined) return "—";
@@ -58,7 +59,7 @@ export default function PotPage() {
     functionName: "holderInfo",
     args: [address as `0x${string}`],
     query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
-    ...readBase,
+    ...READ_BASE,
   });
 
   const { data: claimable } = useReadContract({
@@ -67,7 +68,7 @@ export default function PotPage() {
     functionName: "claimable",
     args: [address as `0x${string}`],
     query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
-    ...readBase,
+    ...READ_BASE,
   });
 
   const { data: tier } = useReadContract({
@@ -76,29 +77,31 @@ export default function PotPage() {
     functionName: "getHolderTier",
     args: [address as `0x${string}`],
     query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 60_000 },
-    ...readBase,
+    ...READ_BASE,
   });
 
   const { data: week } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "currentWeek",
-    query: { refetchInterval: 60_000 },
-    ...readBase,
+    query: { enabled: !!POT_ADDRESS, refetchInterval: 60_000 },
+    ...READ_BASE,
   });
 
   const { data: baseRate } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "baseRateBps",
-    ...readBase,
+    query: { enabled: !!POT_ADDRESS },
+    ...READ_BASE,
   });
 
   const { data: halving } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "halvingIntervalWeeks",
-    ...readBase,
+    query: { enabled: !!POT_ADDRESS },
+    ...READ_BASE,
   });
 
   /** Write: claim */
@@ -179,7 +182,7 @@ export default function PotPage() {
             </div>
           </div>
 
-            {/* Right side */}
+          {/* Right side */}
           <div className="space-y-6">
             {/* How rewards work */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
