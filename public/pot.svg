@@ -1,0 +1,54 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dark background gradient -->
+    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C0F14"/>
+      <stop offset="1" stop-color="#1A1F29"/>
+    </linearGradient>
+
+    <!-- Metallic steel (sword) gradient -->
+    <linearGradient id="steel" x1="10" y1="7" x2="22" y2="25" gradientUnits="userSpaceOnUse">
+      <stop offset="0"  stop-color="#F5F7FA"/>
+      <stop offset="0.18" stop-color="#DDE3EA"/>
+      <stop offset="0.5" stop-color="#B8C2CF"/>
+      <stop offset="0.82" stop-color="#9AA5B3"/>
+      <stop offset="1"  stop-color="#7F8A99"/>
+    </linearGradient>
+
+    <!-- Edge shine for subtle specular highlight -->
+    <linearGradient id="edge" x1="9" y1="6" x2="23" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0"  stop-color="#FFFFFF" stop-opacity="0.8"/>
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="1"  stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect x="1" y="1" width="30" height="30" rx="6" fill="url(#bg)"/>
+
+  <!-- Hourglass body (single path for clean edges at small size) -->
+  <path
+    d="M10 7h12c0 3-3 5-5 7 2 2 5 4 5 7H10c0-3 3-5 5-7-2-2-5-4-5-7z"
+    fill="url(#steel)"
+    stroke="#CBD4DF"
+    stroke-width="1"
+    stroke-linejoin="round"
+    shape-rendering="geometricPrecision"
+  />
+
+  <!-- Neck pin highlight -->
+  <rect x="15.25" y="14" width="1.5" height="4" rx="0.6" fill="#E9EEF4" opacity="0.9"/>
+
+  <!-- Edge glint -->
+  <path
+    d="M10.8 7.8h10.4c-0.1 2.4-2.7 4.2-4.6 5.8-0.5 0.4-0.5 1 0 1.4 1.9 1.6 4.5 3.4 4.6 5.8H10.8c0.1-2.4 2.7-4.2 4.6-5.8 0.5-0.4 0.5-1 0-1.4-1.9-1.6-4.5-3.4-4.6-5.8z"
+    fill="url(#edge)"
+    style="mix-blend-mode:screen"
+  />
+
+  <!-- Subtle inner shadow for depth (kept super light for 32px) -->
+  <path
+    d="M10 7h12c0 3-3 5-5 7 2 2 5 4 5 7H10c0-3 3-5 5-7-2-2-5-4-5-7z"
+    fill="black" opacity="0.06"
+  />
+</svg>
