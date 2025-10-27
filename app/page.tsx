@@ -1,10 +1,10 @@
-// app/page.tsx
 import Nav from "@/components/Nav";
 import dynamic from "next/dynamic";
 import type { Metadata } from "next";
 
 /* ---------- Client islands ---------- */
-const RevealRelicsButton = dynamic(() => import("@/components/RevealRelicsButton"), { ssr: false });
+// ⬇️ Use the new inline reveal/verify block (address input + note)
+const RevealRelicsInline = dynamic(() => import("@/components/RevealRelicsInline"), { ssr: false });
 const HomeCountdown      = dynamic(() => import("@/components/HomeCountdown"), { ssr: false });
 const LaunchShare        = dynamic(() => import("@/components/LaunchShare"), { ssr: false });
 const RelicLegend        = dynamic(() => import("@/components/RelicLegend"), { ssr: false });
@@ -73,8 +73,13 @@ export default function Home() {
               holders into living records of patience, loyalty, and belief.
             </p>
 
-            <div className="mt-7 flex flex-col sm:flex-row sm:items-center gap-3 justify-center md:justify-start">
-              <RevealRelicsButton size="lg" />
+            {/* Inline reveal / verify block (address input + connect-less note) */}
+            <div className="mt-7">
+              <RevealRelicsInline />
+            </div>
+
+            {/* Optional secondary CTA */}
+            <div className="mt-4">
               <a
                 href="/launch"
                 className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
