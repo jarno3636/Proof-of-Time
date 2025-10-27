@@ -2,7 +2,7 @@
 
 import Nav from "@/components/Nav";
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import {
   useAccount,
   useReadContract,
@@ -12,13 +12,24 @@ import {
 import { formatUnits, parseAbi } from "viem";
 import { base } from "viem/chains";
 
-/** ========= Config ========= */
-const POT_ADDRESS = (process.env.NEXT_PUBLIC_POT_ADDRESS || "").trim() as `0x${string}`;
+/** ========= Helpers ========= */
+type Addr = `0x${string}`;
+/** sanitize any env string into a safe address (or undefined) */
+const asAddr = (v?: string): Addr | undefined => {
+  const s = (v ?? "").trim().replace(/\s+/g, "").replace(/['"`]/g, "");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(s)) return undefined;
+  return s.toLowerCase() as Addr; // viem accepts all-lowercase (no checksum needed)
+};
+/** always read against Base regardless of wallet’s chain */
+const READ_BASE = { chainId: base.id };
 
-/** ========= Minimal ABI (matches your contract) ========= */
+/** ========= Config ========= */
+const POT_ADDRESS = asAddr(process.env.NEXT_PUBLIC_POT_ADDRESS);
+
+/** ========= Minimal ABI ========= */
 const POT_ABI = parseAbi([
   // reads
-  "function holderInfo(address holder) view returns (uint256 streakStart_,uint256 completedWeeks_,uint256 lastClaimedWeek_,uint256 claimableWeeks_,uint256 claimableAmount_,uint16 currentMultBps_,uint256 effectiveBaseRateBps_,uint256 reserveBalance_,uint256 baselineBalance_)",
+  "function holderInfo(address holder) view returns (uint256 streakStart,uint256 completedWeeks,uint256 lastClaimedWeek,uint256 claimableWeeks,uint256 claimableAmount,uint16 currentMultBps,uint256 effectiveBaseRateBps,uint256 reserveBalance,uint256 baselineBalance)",
   "function claimable(address holder) view returns (uint256 weeks_, uint256 amount_)",
   "function getHolderTier(address holder) view returns (uint256 idx, uint16 minWeeks, uint16 bps)",
   "function currentWeek() view returns (uint256)",
@@ -28,10 +39,7 @@ const POT_ABI = parseAbi([
   "function claim()",
 ] as const);
 
-/** ========= Helpers ========= */
-const READ_BASE: { chainId: number } = { chainId: base.id };
-const q = { retry: 0, refetchOnWindowFocus: false } as const;
-
+/** ========= UI helpers ========= */
 function fmt18(n?: bigint, digits = 4) {
   if (n === undefined) return "—";
   const v = Number.parseFloat(formatUnits(n, 18));
@@ -48,72 +56,60 @@ function since(ts?: bigint) {
   const d = Math.floor((Date.now() - ms) / 86_400_000);
   return d < 1 ? "<1 day" : `${d} days`;
 }
-function Debug({ label, error, status }: { label: string; error?: unknown; status?: string }) {
-  if (!error) return null;
-  const msg = typeof error === "object" && error && "message" in (error as any)
-    ? (error as any).message
-    : String(error);
-  return (
-    <div className="mt-3 rounded-lg border border-red-900/50 bg-red-900/10 p-2 text-xs text-red-300">
-      <div className="font-semibold">{label} failed ({status})</div>
-      <div className="mt-1 break-words">{msg}</div>
-    </div>
-  );
-}
 
 export default function PotPage() {
   const { address, chainId, isConnected } = useAccount();
 
-  /** Reads (forced Base) */
-  const { data: info, error: eInfo, status: sInfo } = useReadContract({
+  /** Reads (force Base chain) */
+  const { data: info } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "holderInfo",
-    args: [address as `0x${string}`],
+    args: [address as Addr],
+    query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
     ...READ_BASE,
-    query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
   });
 
-  const { data: claimable, error: eClaimable, status: sClaimable } = useReadContract({
+  const { data: claimable } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "claimable",
-    args: [address as `0x${string}`],
+    args: [address as Addr],
+    query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
     ...READ_BASE,
-    query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 20_000 },
   });
 
-  const { data: tier, error: eTier, status: sTier } = useReadContract({
+  const { data: tier } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "getHolderTier",
-    args: [address as `0x${string}`],
+    args: [address as Addr],
+    query: { enabled: !!address && !!POT_ADDRESS, refetchInterval: 60_000 },
     ...READ_BASE,
-    query: { ...q, enabled: !!address && !!POT_ADDRESS, refetchInterval: 60_000 },
   });
 
-  const { data: week, error: eWeek, status: sWeek } = useReadContract({
+  const { data: week } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "currentWeek",
+    query: { refetchInterval: 60_000, enabled: !!POT_ADDRESS },
     ...READ_BASE,
-    query: { ...q, refetchInterval: 60_000 },
   });
 
-  const { data: baseRate, error: eBase, status: sBase } = useReadContract({
+  const { data: baseRate } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "baseRateBps",
+    query: { enabled: !!POT_ADDRESS },
     ...READ_BASE,
-    query: q,
   });
 
-  const { data: halving, error: eHalving, status: sHalving } = useReadContract({
+  const { data: halving } = useReadContract({
     address: POT_ADDRESS,
     abi: POT_ABI,
     functionName: "halvingIntervalWeeks",
+    query: { enabled: !!POT_ADDRESS },
     ...READ_BASE,
-    query: q,
   });
 
   /** Write: claim */
@@ -131,29 +127,24 @@ export default function PotPage() {
     writeContract({ address: POT_ADDRESS, abi: POT_ABI, functionName: "claim", chainId: base.id });
   };
 
-  // Unpack info for display (safe defaults)
+  // Unpack info for display (protect against undefined)
   const [
     streakStart,
     completedWeeks,
     lastClaimedWeek,
     claimableWeeks,
-    _claimableAmount,
+    claimableAmount,
     currentMultBps,
     effectiveBaseRateBps,
     reserveBalance,
     baselineBalance,
   ] =
     (info ??
-      [0n, 0n, 0n, 0n, 0n, 0, 0n, 0n, 0n]) as unknown as [
-      bigint, bigint, bigint, bigint, bigint, number, bigint, bigint, bigint
-    ];
+      [
+        0n, 0n, 0n, 0n, 0n, 0, 0n, 0n, 0n,
+      ]) as unknown as [bigint, bigint, bigint, bigint, bigint, number, bigint, bigint, bigint];
 
   const [, claimableAmt] = (claimable ?? [0n, 0n]) as unknown as [bigint, bigint];
-
-  useEffect(() => {
-    const firstErr = eInfo || eClaimable || eTier || eWeek || eBase || eHalving;
-    if (firstErr) console.error("[pot reads error]", firstErr);
-  }, [eInfo, eClaimable, eTier, eWeek, eBase, eHalving]);
 
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
@@ -196,14 +187,6 @@ export default function PotPage() {
                 <li>Optional global halving every N weeks</li>
                 <li><span className="text-[#BBA46A] font-medium">Minimum hold:</span> 500 PØT required to earn rewards</li>
               </ul>
-
-              {/* Debug block for this page */}
-              <Debug label="holderInfo" error={eInfo} status={sInfo} />
-              <Debug label="claimable" error={eClaimable} status={sClaimable} />
-              <Debug label="getHolderTier" error={eTier} status={sTier} />
-              <Debug label="currentWeek" error={eWeek} status={sWeek} />
-              <Debug label="baseRateBps" error={eBase} status={sBase} />
-              <Debug label="halvingIntervalWeeks" error={eHalving} status={sHalving} />
             </div>
           </div>
 
