@@ -1,4 +1,3 @@
-// app/launch/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
@@ -68,6 +67,9 @@ const LINKS = {
 };
 
 /** ========= Helpers ========= */
+// Always read from Base regardless of wallet chain
+const READ_BASE: { chainId: number } = { chainId: base.id };
+
 const fmt18 = (n?: bigint, digits = 4) =>
   n !== undefined ? Number(formatUnits(n, 18)).toLocaleString(undefined, { maximumFractionDigits: digits }) : "—";
 
@@ -102,32 +104,29 @@ export default function LaunchPage() {
     return () => clearInterval(id);
   }, []);
 
-  /** Reads — Presale (force Base chain for all reads) */
-  const readBase = { chainId: base.id };
+  /** Reads — Presale (force Base chain) */
+  const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth", query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: startAt }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "startAt",           query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: endAt }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "endAt",             query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: minWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "minPerWalletWei",   query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: maxWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "maxPerWalletWei",   query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: hardCap }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "hardCapWei",        query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: saleSupply } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "saleSupply",        query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
+  const { data: raised }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei",    query: { enabled: !!PRESALE_ADDRESS, refetchInterval: 5000 }, ...READ_BASE });
+  const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens",   query: { enabled: !!PRESALE_ADDRESS, refetchInterval: 5000 }, ...READ_BASE });
+  const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",              query: { enabled: !!PRESALE_ADDRESS, refetchInterval: 5000 }, ...READ_BASE });
+  const { data: finalized }  = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "finalized",         query: { enabled: !!PRESALE_ADDRESS, refetchInterval: 5000 }, ...READ_BASE });
+  const { data: claimFromPresale } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim",       query: { enabled: !!PRESALE_ADDRESS }, ...READ_BASE });
 
-  const { data: price }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "priceTokensPerEth", ...readBase });
-  const { data: startAt }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "startAt",           ...readBase });
-  const { data: endAt }      = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "endAt",             ...readBase });
-  const { data: minWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "minPerWalletWei",   ...readBase });
-  const { data: maxWei }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "maxPerWalletWei",   ...readBase });
-  const { data: hardCap }    = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "hardCapWei",        ...readBase });
-  const { data: saleSupply } = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "saleSupply",        ...readBase });
-  const { data: raised }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalRaisedWei",    query: { refetchInterval: 5000 }, ...readBase });
-  const { data: sold }       = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "totalSoldTokens",   query: { refetchInterval: 5000 }, ...readBase });
-  const { data: isLive }     = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "live",              query: { refetchInterval: 5000 }, ...readBase });
-  const { data: finalized }  = useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "finalized",         query: { refetchInterval: 5000 }, ...readBase });
-  const { data: claimFromPresale } =
-    useReadContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim", ...readBase });
-
-  /** Reads — Locks (prefer envs) */
+  /** Reads — Locks (prefer envs; force Base chain) */
   const { data: lpOnChain } =
-    useReadContract({ address: LIQ_ADDRESS, abi: LIQ_ABI, functionName: "lpLockedUntil", query: { enabled: !!LIQ_ADDRESS && !LP_LOCK_UNIX_ENV }, ...readBase });
+    useReadContract({ address: LIQ_ADDRESS, abi: LIQ_ABI, functionName: "lpLockedUntil", query: { enabled: !!LIQ_ADDRESS && !LP_LOCK_UNIX_ENV }, ...READ_BASE });
   const { data: teamOnChain } =
-    useReadContract({ address: TEAMLOCK_ADDR, abi: TEAMLOCK_ABI, functionName: "releaseAt", query: { enabled: !!TEAMLOCK_ADDR && !TEAM_LOCK_UNIX_ENV }, ...readBase });
+    useReadContract({ address: TEAMLOCK_ADDR, abi: TEAMLOCK_ABI, functionName: "releaseAt", query: { enabled: !!TEAMLOCK_ADDR && !TEAM_LOCK_UNIX_ENV }, ...READ_BASE });
   const { data: claimA } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...readBase });
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_A, functionName: "releaseAt", query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...READ_BASE });
   const { data: claimB } =
-    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...readBase });
+    useReadContract({ address: CLAIM_ADDR, abi: CLAIM_ABI_B, functionName: "unlockAt",  query: { enabled: !!CLAIM_ADDR && !CLAIM_UNLOCK_UNIX }, ...READ_BASE });
 
   const lpUntil     = (LP_LOCK_UNIX_ENV || Number(lpOnChain || 0)) || undefined;
   const teamUntil   = (TEAM_LOCK_UNIX_ENV || Number(teamOnChain || 0)) || undefined;
@@ -136,13 +135,13 @@ export default function LaunchPage() {
   /** Claim contract resolve */
   const claimAddr = (claimFromPresale as `0x${string}` | undefined) || (CLAIM_ADDR || undefined);
 
-  /** Claim lock reads */
+  /** Claim lock reads (force Base chain) */
   const { data: unlockAt, refetch: refetchUnlockAt } = useReadContract({
     address: claimAddr,
     abi: CLAIMLOCK_ABI,
     functionName: "unlockAt",
     query: { enabled: !!claimAddr, refetchInterval: 30_000 },
-    ...readBase,
+    ...READ_BASE,
   });
 
   const { data: userClaimable, refetch: refetchClaimable } = useReadContract({
@@ -151,7 +150,7 @@ export default function LaunchPage() {
     functionName: "claimable",
     args: [address as `0x${string}`],
     query: { enabled: !!claimAddr && !!address, refetchInterval: 30_000 },
-    ...readBase,
+    ...READ_BASE,
   });
 
   /** Wallet + writes */
