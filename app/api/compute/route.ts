@@ -1,71 +1,90 @@
+// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import {
   fetchBalancesBase,
   fetchPriceUSDMap,
-  fetchTransfersViaEtherscan,   // 👈 NEW fast path
-  fetchTransfersBase,            // fallback (slow)
+  fetchTransfersViaEtherscan, // fast path
+  fetchTransfersBase,          // fallback
 } from "@/lib/data";
 import { computePerTokenStats } from "@/lib/proofOfTime";
 import { Balance, HexAddr, PerTokenStats } from "@/lib/types";
 import { createClient } from "@supabase/supabase-js";
 
-// --- Utilities --------------------------------------------------------------
+/* ---------------- Helpers ---------------- */
 
 function isHexAddress(s: string): s is HexAddr {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
-// --- POST /api/compute ------------------------------------------------------
+/* ---------------- POST /api/compute ---------------- */
 // Body: { "address": "0x..." } or ?address=0x...
 export async function POST(req: NextRequest) {
   try {
-    // Accept address in JSON body or fallback to URLSearchParams (?address=0x..)
-    let address: string | undefined;
+    // Parse address from JSON body first, otherwise from query (?address=)
+    let raw: string | undefined;
     try {
-      const j = await req.json();
-      address = j?.address;
+      const j = await req.json().catch(() => ({}));
+      raw = (j?.address as string | undefined)?.trim();
     } catch {
+      // ignore body parse error and fall back to query
+    }
+    if (!raw) {
       const q = new URL(req.url).searchParams.get("address") || "";
-      address = q || undefined;
+      raw = q.trim() || undefined;
     }
 
-    if (!address || !isHexAddress(address)) {
-      return NextResponse.json({ error: "Invalid address (expected 0x...40 hex)" }, { status: 400 });
+    if (!raw || !isHexAddress(raw)) {
+      return NextResponse.json(
+        { error: "Invalid address (expected 0x…40 hex)" },
+        { status: 400 }
+      );
     }
+
+    // ✅ Normalize to lowercase for consistent storage & lookups
+    const address = raw.toLowerCase() as HexAddr;
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_KEY;
     if (!url || !key) {
-      return NextResponse.json({ error: "Supabase env missing (URL or SERVICE_KEY)" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Supabase env missing (URL or SERVICE_KEY)" },
+        { status: 500 }
+      );
     }
     const supabase = createClient(url, key);
 
-    // ---------- FAST PATH: Etherscan v2 ----------
-    // Pull transfers (already timestamped) via Etherscan; if it fails/empty, fallback to on-chain
-    let transfers = await fetchTransfersViaEtherscan(address as HexAddr).catch(() => []);
+    // ---------- Transfers ----------
+    // Try fast Etherscan path, then fall back to on-chain if needed.
+    let transfers = await fetchTransfersViaEtherscan(address).catch(() => []);
     if (!transfers.length) {
-      // Fallback (slower) only if fast path produced nothing
-      transfers = await fetchTransfersBase(address as HexAddr).catch(() => []);
+      transfers = await fetchTransfersBase(address).catch(() => []);
     }
 
-    // Balances (uses GoldRush + on-chain fallback inside)
-    const balances = await fetchBalancesBase(address as HexAddr).catch(() => []);
+    // ---------- Balances ----------
+    const balances = await fetchBalancesBase(address).catch(() => []);
 
-    // Ensure wallet record exists even if nothing else was found
+    // Ensure wallet record exists even if no balances
     await supabase.from("wallets").upsert({ address }).throwOnError();
 
     if (!balances?.length) {
-      return NextResponse.json({ address, count: 0, note: "No non-zero ERC-20 balances detected on Base." });
+      return NextResponse.json({
+        address,
+        count: 0,
+        note: "No non-zero ERC-20 balances detected on Base.",
+      });
     }
 
-    // Prices for scoring & dust filtering
-    const priceMap = await fetchPriceUSDMap(balances.map((b) => b.token)).catch(() => ({} as Record<string, number>));
+    // ---------- Prices ----------
+    const priceMap =
+      (await fetchPriceUSDMap(balances.map((b) => b.token)).catch(
+        () => ({}) as Record<string, number>
+      )) || {};
 
-    // Compute stats
+    // ---------- Compute per-token stats ----------
     const stats: PerTokenStats[] = [];
     for (const b of balances as Balance[]) {
       const s = computePerTokenStats(
-        address as HexAddr,
+        address,
         b.token,
         transfers,
         b,
@@ -74,11 +93,12 @@ export async function POST(req: NextRequest) {
       if (s) stats.push(s);
     }
 
-    // Persist
+    // ---------- Persist ----------
     if (stats.length) {
       const rows = stats.map((s) => ({
+        // ✅ store lowercased keys for reliable queries
         address,
-        token_address: s.token_address,
+        token_address: s.token_address.toLowerCase(),
         symbol: s.symbol,
         decimals: s.decimals,
         first_acquired_ts: s.first_acquired_ts,
@@ -98,18 +118,24 @@ export async function POST(req: NextRequest) {
         .upsert(rows, { onConflict: "address,token_address" });
 
       if (error) {
-        return NextResponse.json({ error: `DB upsert failed: ${error.message}` }, { status: 500 });
+        return NextResponse.json(
+          { error: `DB upsert failed: ${error.message}` },
+          { status: 500 }
+        );
       }
     }
 
     return NextResponse.json({ address, count: stats.length });
   } catch (err: any) {
     console.error("compute error:", err?.message || err);
-    return NextResponse.json({ error: err?.message || "Unknown compute error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "Unknown compute error" },
+      { status: 500 }
+    );
   }
 }
 
-// --- GET /api/compute -------------------------------------------------------
+/* ---------------- GET /api/compute ---------------- */
 export async function GET() {
   return new Response(
     `<!doctype html>
@@ -136,7 +162,7 @@ export async function GET() {
         });
         const j = await r.json().catch(()=>({error:'non-json'}));
         out.textContent = JSON.stringify(j,null,2);
-        if (j && j.address) location.href = '/relic/' + address;
+        if (j && j.address) location.href = '/relic/' + j.address; // use normalized address from server
       } catch (e) {
         out.textContent = '❌ Request error: ' + (e && e.message ? e.message : e);
       } finally {
