@@ -1,3 +1,4 @@
+// lib/wallet.ts
 "use client";
 
 import { http, cookieStorage, createStorage, createConfig } from "wagmi";
@@ -20,12 +21,25 @@ import { injected } from "@wagmi/connectors";
 // Farcaster official wagmi connector (works in Warpcast)
 import { farcasterMiniApp as miniAppConnector } from "@farcaster/miniapp-wagmi-connector";
 
+/** ------------ WalletConnect project id ------------ */
 const WC_PROJECT_ID =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
   process.env.NEXT_PUBLIC_WALLETCONNECT_ID ||
   "";
 
-// RainbowKit wallet groups (full set for web/dapps)
+/** ------------ RPC selection (prefer browser/CORS friendly) ------------ */
+const DIRECT_URL  = process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim();
+const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_KEY?.trim();
+const INFURA_KEY  = process.env.NEXT_PUBLIC_INFURA_KEY?.trim();
+
+const RPC_URL =
+  DIRECT_URL ||
+  (ALCHEMY_KEY ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}` : "") ||
+  (INFURA_KEY  ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : "") ||
+  // public fallback that usually allows browser CORS:
+  "https://rpc.ankr.com/base";
+
+/** ------------ RainbowKit wallet groups ------------ */
 const walletGroups = [
   {
     groupName: "Popular",
@@ -46,16 +60,13 @@ const rkConnectors = connectorsForWallets(walletGroups, {
   projectId: WC_PROJECT_ID || "stub-project-id",
 });
 
-// Final wagmi config (order matters)
+/** ------------ Final wagmi config ------------ */
 export const wagmiConfig = createConfig({
   chains: [base],
   transports: {
-    [base.id]: http(
-      process.env.NEXT_PUBLIC_BASE_RPC_URL ||
-        (process.env.NEXT_PUBLIC_INFURA_KEY
-          ? `https://base-mainnet.infura.io/v3/${process.env.NEXT_PUBLIC_INFURA_KEY}`
-          : "https://mainnet.base.org")
-    ),
+    [base.id]: http(RPC_URL, {
+      batch: true, // fewer requests; friendlier to mobile/webviews
+    }),
   },
   connectors: [
     // 1) Farcaster Mini-App connector (handles Warpcast webview properly)
