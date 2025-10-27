@@ -24,9 +24,10 @@ async function getRelics(address: string) {
 
 export default function Page({ params }: { params: { address: string } }) {
   const { address: connected } = useAccount();
-  const targetAddr = useMemo(() => params.address, [params.address]);
 
-  // Altar state
+  // ✅ normalize param once
+  const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
+
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export default function Page({ params }: { params: { address: string } }) {
     setLoading(true);
     setError(null);
     try {
-      const j = await getRelics(targetAddr);
+      const j = await getRelics(targetAddr); // already lowercase
       setTokens(j.tokens || []);
       setSelected((prev) =>
         prev.filter((sym) => (j.tokens || []).some((t) => t.symbol === sym))
@@ -60,6 +61,7 @@ export default function Page({ params }: { params: { address: string } }) {
       const r = await fetch("/api/compute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // ✅ send lowercase into compute as well
         body: JSON.stringify({ address: targetAddr }),
       });
       const j = await r.json().catch(() => ({}));
@@ -81,7 +83,7 @@ export default function Page({ params }: { params: { address: string } }) {
   const isOwnerView =
     connected &&
     typeof connected === "string" &&
-    connected.toLowerCase() === targetAddr.toLowerCase();
+    connected.toLowerCase() === targetAddr;
 
   return (
     <>
