@@ -31,7 +31,7 @@ export default function Home() {
               holders into living records of patience, loyalty, and belief.
             </p>
 
-            {/* Inline reveal / verify block (address input + connect-less note) */}
+            {/* Inline reveal / verify block */}
             <div className="mt-7">
               <RevealRelicsInline />
             </div>
@@ -114,9 +114,8 @@ export default function Home() {
         </p>
       </section>
 
-      {/* ---------- Footer (component) + Created on ---------- */}
+      {/* ---------- Footer (component) ---------- */}
       <Footer />
-      </div>
     </main>
   );
 }
