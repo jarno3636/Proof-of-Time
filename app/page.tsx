@@ -116,8 +116,6 @@ export default function Home() {
 
       {/* ---------- Footer (component) + Created on ---------- */}
       <Footer />
-      <div className="text-center text-xs text-zinc-600 pb-6">
-        Created on <span className="text-[#BBA46A]">October 26, 2025</span>
       </div>
     </main>
   );
