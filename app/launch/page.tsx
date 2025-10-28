@@ -2,6 +2,7 @@
 "use client";
 
 import Nav from "@/components/Nav";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import {
@@ -511,11 +512,7 @@ export default function LaunchPage() {
         </div>
       </section>
 
-      <footer className="border-t border-zinc-800/60 bg-zinc-900/20">
-        <div className="mx-auto w-full max-w-6xl px-6 py-6 flex items-center justify-center">
-          <div className="text-xs text-zinc-500">© {new Date().getFullYear()} Proof of Time</div>
-        </div>
-      </footer>
+      <Footer />
     </main>
   );
 }
