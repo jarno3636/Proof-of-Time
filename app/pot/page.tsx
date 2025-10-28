@@ -1,6 +1,7 @@
 "use client";
 
 import Nav from "@/components/Nav";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 import { useMemo } from "react";
 import {
@@ -247,27 +248,7 @@ export default function PotPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-800/60 bg-zinc-900/20">
-        <div className="mx-auto max-w-6xl px-6 py-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="text-xs text-zinc-500">© {new Date().getFullYear()} Proof of Time</div>
-          <div className="flex items-center gap-4">
-            {POT_ADDRESS ? (
-              <a
-                href={`https://basescan.org/address/${POT_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-1.5 text-sm font-semibold text-[#BBA46A] hover:text-[#d6c289] hover:border-[#BBA46A]/50 transition"
-                title="View PoT contract on BaseScan"
-              >
-                View Contract ↗
-              </a>
-            ) : (
-              <span className="text-xs text-zinc-500">Set NEXT_PUBLIC_POT_ADDRESS</span>
-            )}
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </main>
   );
 }
