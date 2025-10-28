@@ -1,6 +1,7 @@
 "use client";
 
-import { Mail, Send, Reddit } from "lucide-react";
+import { Mail, Send } from "lucide-react";
+import { SiReddit } from "react-icons/si";
 import Link from "next/link";
 
 export default function Footer() {
@@ -43,7 +44,7 @@ export default function Footer() {
             target="_blank"
             className="flex items-center gap-1 hover:text-[#BBA46A] transition"
           >
-            <Reddit size={16} /> Reddit
+            <SiReddit size={16} /> Reddit
           </Link>
 
           <Link
@@ -59,7 +60,7 @@ export default function Footer() {
         <div className="text-xs text-center md:text-right text-zinc-500 leading-relaxed">
           <div>© {new Date().getFullYear()} Proof of Time — All Rights Reserved.</div>
           <div className="text-zinc-600 mt-1">
-            Created on <span className="text-[#BBA46A]">October 26 2025</span>
+            Created on <span className="text-[#BBA46A]">October 26, 2025</span>
           </div>
         </div>
       </div>
