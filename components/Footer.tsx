@@ -1,10 +1,22 @@
+// components/Footer.tsx
 "use client";
 
-import { Mail, Send } from "lucide-react";
+import { Mail, Send, Link as LinkIcon } from "lucide-react";
 import { SiReddit } from "react-icons/si";
 import Link from "next/link";
 
-export default function Footer() {
+type FooterProps = {
+  /** Optional: full BaseScan URL overrides everything */
+  contractUrl?: string;
+  /** Optional: token address; builds https://basescan.org/address/<addr> */
+  tokenAddress?: `0x${string}`;
+};
+
+export default function Footer({ contractUrl, tokenAddress }: FooterProps) {
+  const envAddr = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "").trim().toLowerCase();
+  const addr = (tokenAddress || (envAddr as `0x${string}`)) || "";
+  const url = contractUrl || (addr ? `https://basescan.org/address/${addr}` : "");
+
   return (
     <footer className="w-full border-t border-zinc-800/60 bg-[#0b0e14] text-zinc-400 py-10 backdrop-blur-sm">
       <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -32,12 +44,23 @@ export default function Footer() {
             CoinSniper
           </Link>
 
-          <span className="text-zinc-600 cursor-default">
-            CoinMarketCap (coming soon)
-          </span>
-          <span className="text-zinc-600 cursor-default">
-            CoinVote.cc (coming soon)
-          </span>
+          {/* Token Contract (clean hyperlink, no URL/address text) */}
+          {url ? (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-[#BBA46A] transition"
+            >
+              <LinkIcon size={16} />
+              Token Contract
+            </a>
+          ) : (
+            <span className="text-zinc-600 cursor-default">Set token address</span>
+          )}
+
+          <span className="text-zinc-600 cursor-default">CoinMarketCap (coming soon)</span>
+          <span className="text-zinc-600 cursor-default">CoinVote.cc (coming soon)</span>
 
           <Link
             href="https://www.reddit.com/r/proofoftime/s/0KTf7D2vaM"
