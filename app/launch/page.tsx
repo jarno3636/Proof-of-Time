@@ -15,7 +15,6 @@ import {
 import { formatEther, formatUnits, parseAbi, parseEther } from "viem";
 import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import LaunchShare from "@/components/LaunchShare";
 
 /** ========= Config (from env) =========
  * viem complains if a mixed-case address doesn't match checksum.
@@ -323,12 +322,6 @@ export default function LaunchPage() {
                   <div className="h-full bg-[#BBA46A]" style={{ width: `${progress.pct}%` }} />
                 </div>
               </div>
-
-              {/* Share */}
-              <div className="mt-6">
-                <LaunchShare />
-              </div>
-            </div>
 
             {/* Pie */}
             <div className="mt-6 rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
