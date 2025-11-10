@@ -1,8 +1,10 @@
+// app/pot/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import {
   useAccount,
@@ -13,30 +15,32 @@ import {
 import { formatUnits, parseAbi } from "viem";
 import { base } from "viem/chains";
 
+/** ---------- UI islands ---------- */
+const BuyButton = dynamic(() => import("@/components/BuyButton"), { ssr: false });
+const PriceChip = dynamic(() => import("@/components/PriceChip"), { ssr: false });
+
 /** ========= Helpers ========= */
 type Addr = `0x${string}`;
-/** sanitize any env string into a safe address (or undefined) */
 const asAddr = (v?: string): Addr | undefined => {
   const s = (v ?? "").trim().replace(/\s+/g, "").replace(/['"`]/g, "");
   if (!/^0x[0-9a-fA-F]{40}$/.test(s)) return undefined;
-  return s.toLowerCase() as Addr; // viem accepts all-lowercase (no checksum needed)
+  return s.toLowerCase() as Addr;
 };
-/** always read against Base regardless of wallet’s chain */
 const READ_BASE = { chainId: base.id };
 
 /** ========= Config ========= */
 const POT_ADDRESS = asAddr(process.env.NEXT_PUBLIC_POT_ADDRESS);
+// GeckoTerminal pool for PØT/WETH on Base (from your link)
+const GECKO_POOL_ID = "base/0x89a77adf4e04d3af3db8794870aabb63c556c9fa";
 
 /** ========= Minimal ABI ========= */
 const POT_ABI = parseAbi([
-  // reads
   "function holderInfo(address holder) view returns (uint256 streakStart,uint256 completedWeeks,uint256 lastClaimedWeek,uint256 claimableWeeks,uint256 claimableAmount,uint16 currentMultBps,uint256 effectiveBaseRateBps,uint256 reserveBalance,uint256 baselineBalance)",
   "function claimable(address holder) view returns (uint256 weeks_, uint256 amount_)",
   "function getHolderTier(address holder) view returns (uint256 idx, uint16 minWeeks, uint16 bps)",
   "function currentWeek() view returns (uint256)",
   "function baseRateBps() view returns (uint256)",
   "function halvingIntervalWeeks() view returns (uint256)",
-  // write
   "function claim()",
 ] as const);
 
@@ -128,7 +132,7 @@ export default function PotPage() {
     writeContract({ address: POT_ADDRESS, abi: POT_ABI, functionName: "claim", chainId: base.id });
   };
 
-  // Unpack info for display (protect against undefined)
+  // Unpack info for display
   const [
     streakStart,
     completedWeeks,
@@ -155,12 +159,16 @@ export default function PotPage() {
       <div className="border-b border-zinc-800/60 bg-zinc-900/20 backdrop-blur">
         <div className="mx-auto max-w-6xl px-6 py-3 flex items-center justify-between">
           <Link href="/" className="text-zinc-300 hover:text-[#d6c289] transition">← Back</Link>
-          <div className="text-xs md:text-sm text-zinc-500">
-            {POT_ADDRESS ? (
-              <>Contract: <span className="text-[#BBA46A] font-medium">{POT_ADDRESS.slice(0, 6)}…{POT_ADDRESS.slice(-4)}</span></>
-            ) : (
-              "Set NEXT_PUBLIC_POT_ADDRESS"
-            )}
+          <div className="flex items-center gap-3">
+            {/* Live price chip (fails safe) */}
+            <PriceChip poolId={GECKO_POOL_ID} />
+            <div className="text-xs md:text-sm text-zinc-500">
+              {POT_ADDRESS ? (
+                <>Contract: <span className="text-[#BBA46A] font-medium">{POT_ADDRESS.slice(0, 6)}…{POT_ADDRESS.slice(-4)}</span></>
+              ) : (
+                "Set NEXT_PUBLIC_POT_ADDRESS"
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -188,29 +196,18 @@ export default function PotPage() {
                 <li>Optional global halving every N weeks</li>
                 <li><span className="text-[#BBA46A] font-medium">Minimum hold:</span> 500 PØT required to earn rewards</li>
               </ul>
+
+              {/* Buy button on token page */}
+              <div className="mt-5">
+                <BuyButton />
+              </div>
             </div>
           </div>
 
-          {/* Right side */}
+          {/* Right side: Live panel */}
           <div className="space-y-6">
-            {/* How rewards work */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
-              <h3 className="text-lg font-semibold text-[#BBA46A]">How rewards work</h3>
-              <ol className="mt-3 text-sm text-zinc-400 list-decimal pl-5 space-y-2">
-                <li>Hold PØT without sending it out; your streak counts in whole weeks.</li>
-                <li>Week 1 yields no rewards; from <span className="text-[#BBA46A]">Week 2</span> onward you accrue.</li>
-                <li>Rewards = min(balance, baseline) × baseRate × multiplier × eligibleWeeks.</li>
-                <li>Any outgoing transfer resets your streak and baseline.</li>
-                <li>You must hold at least <span className="text-[#BBA46A] font-semibold">500 PØT</span>.</li>
-              </ol>
-            </div>
-
-            {/* Live panel */}
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold">Your Time Panel</h3>
-                <span className="text-xs text-zinc-500">Chain: Base</span>
-              </div>
+              <h3 className="text-lg font-semibold text-[#BBA46A]">Your Time Panel</h3>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <Stat label="Completed weeks" value={completedWeeks?.toString() ?? "—"} />
