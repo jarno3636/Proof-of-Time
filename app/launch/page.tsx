@@ -16,17 +16,14 @@ import { formatEther, formatUnits, parseAbi, parseEther } from "viem";
 import { base } from "viem/chains";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
-/** ========= Config (from env) =========
- * viem complains if a mixed-case address doesn't match checksum.
- * Lowercasing avoids that requirement and is accepted by viem.
- */
+/** ========= Config (from env) ========= */
 const PRESALE_ADDRESS = ((process.env.NEXT_PUBLIC_PRESALE_ADDRESS || "").trim().toLowerCase() || "") as `0x${string}`;
 const TOKEN_ADDRESS   = ((process.env.NEXT_PUBLIC_TOKEN_ADDRESS   || "").trim().toLowerCase() || "") as `0x${string}`;
 const POT_LINK        = process.env.NEXT_PUBLIC_POT_LINK || "/pot";
 
-const LIQ_ADDRESS     = ((process.env.NEXT_PUBLIC_LIQ_ADDRESS           || "").trim().toLowerCase() || "") as `0x${string}`;
-const TEAMLOCK_ADDR   = ((process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS     || "").trim().toLowerCase() || "") as `0x${string}`;
-const CLAIM_ADDR      = ((process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS    || "").trim().toLowerCase() || "") as `0x${string}`;
+const LIQ_ADDRESS     = ((process.env.NEXT_PUBLIC_LIQ_ADDRESS        || "").trim().toLowerCase() || "") as `0x${string}`;
+const TEAMLOCK_ADDR   = ((process.env.NEXT_PUBLIC_TEAM_LOCK_ADDRESS  || "").trim().toLowerCase() || "") as `0x${string}`;
+const CLAIM_ADDR      = ((process.env.NEXT_PUBLIC_CLAIM_LOCK_ADDRESS || "").trim().toLowerCase() || "") as `0x${string}`;
 
 const LP_LOCK_UNIX_ENV   = Number(process.env.NEXT_PUBLIC_LP_LOCK_UNIX || 0);
 const TEAM_LOCK_UNIX_ENV = Number(process.env.NEXT_PUBLIC_TEAM_LOCK_UNIX || 0);
@@ -62,16 +59,15 @@ const CLAIMLOCK_ABI = parseAbi([
 
 /** ========= Links (from envs) ========= */
 const LINKS = {
-  token:   TOKEN_ADDRESS   ? `https://basescan.org/address/${TOKEN_ADDRESS}`     : "",
-  presale: PRESALE_ADDRESS ? `https://basescan.org/address/${PRESALE_ADDRESS}`   : "",
-  liq:     LIQ_ADDRESS     ? `https://basescan.org/address/${LIQ_ADDRESS}`       : "",
-  timelock:TEAMLOCK_ADDR   ? `https://basescan.org/address/${TEAMLOCK_ADDR}`     : "",
-  claim:   CLAIM_ADDR      ? `https://basescan.org/address/${CLAIM_ADDR}`        : "",
-  potPage: POT_LINK || "/pot",
+  token:    TOKEN_ADDRESS   ? `https://basescan.org/address/${TOKEN_ADDRESS}`   : "",
+  presale:  PRESALE_ADDRESS ? `https://basescan.org/address/${PRESALE_ADDRESS}` : "",
+  liq:      LIQ_ADDRESS     ? `https://basescan.org/address/${LIQ_ADDRESS}`     : "",
+  timelock: TEAMLOCK_ADDR   ? `https://basescan.org/address/${TEAMLOCK_ADDR}`   : "",
+  claim:    CLAIM_ADDR      ? `https://basescan.org/address/${CLAIM_ADDR}`      : "",
+  potPage:  POT_LINK || "/pot",
 };
 
 /** ========= Helpers ========= */
-// Always read from Base regardless of wallet chain
 const READ_BASE: { chainId: number } = { chainId: base.id };
 
 const fmt18 = (n?: bigint, digits = 4) =>
@@ -81,9 +77,16 @@ const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 function ts(unix?: bigint | number) {
   const u = typeof unix === "bigint" ? Number(unix) : unix;
   if (!u) return "—";
-  return new Date(u * 1000).toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: true,
-  }) + ` (${tz})`;
+  return (
+    new Date(u * 1000).toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }) + ` (${tz})`
+  );
 }
 function rel(unix?: bigint | number) {
   const u = typeof unix === "bigint" ? Number(unix) : unix;
@@ -94,7 +97,6 @@ function rel(unix?: bigint | number) {
   return `${Math.abs(d)} day${Math.abs(d) === 1 ? "" : "s"} ago`;
 }
 
-/** Palette tuned for contrast on dark */
 const PIE_COLORS = ["#F1E1A6", "#A3925D", "#6B6242", "#2B2A25"];
 
 export default function LaunchPage() {
@@ -171,9 +173,20 @@ export default function LaunchPage() {
     }
   }, [confirmed, lastTx, refetchClaimable, refetchUnlockAt]);
 
+  /** Phases (for gating UI) */
+  const startMs = Number(startAt || 0) * 1000;
+  const endMs   = Number(endAt   || 0) * 1000;
+  const phase: "pending" | "pre" | "live" | "ended" = useMemo(() => {
+    if (!startMs || !endMs) return "pending";
+    if (now < startMs) return "pre";
+    if (now >= startMs && now <= endMs) return "live";
+    return "ended";
+  }, [now, startMs, endMs]);
+
   /** Buy gating */
   const canBuy = useMemo(() => {
     if (!PRESALE_ADDRESS) return false;
+    if (phase !== "live") return false;
     if (!isConnected || chainId !== base.id) return false;
     const v = Number(ethAmount || 0);
     const min = Number(minWei ? formatEther(minWei as bigint) : 0);
@@ -184,7 +197,7 @@ export default function LaunchPage() {
     if (max && v > max) return false;
     if (bal && v > Number(bal.formatted)) return false;
     return true;
-  }, [PRESALE_ADDRESS, isConnected, chainId, ethAmount, minWei, maxWei, bal, isLive]);
+  }, [PRESALE_ADDRESS, phase, isConnected, chainId, ethAmount, minWei, maxWei, bal, isLive]);
 
   const onBuy = () => {
     if (!PRESALE_ADDRESS || !ethAmount) return;
@@ -199,7 +212,7 @@ export default function LaunchPage() {
   };
 
   /** Claim gating */
-  const unlockMs = Number(unlockAt || 0) * 1000;
+  const unlockMs = Number(unlockAt || claimUnlock || 0) * 1000;
   const isUnlocked = !!unlockMs && now >= unlockMs;
   const claimableNum = Number(userClaimable ?? 0);
 
@@ -240,19 +253,38 @@ export default function LaunchPage() {
   }, [raised, hardCap]);
 
   /** Sale status text */
-  const startMs = Number(startAt || 0) * 1000;
-  const endMs   = Number(endAt   || 0) * 1000;
-
   let saleStatus: string;
   if (!startMs || !endMs) {
     saleStatus = "Sale schedule pending";
-  } else if (now < startMs) {
+  } else if (phase === "pre") {
     saleStatus = `Opens ${ts(Number(startAt || 0))} (${rel(Number(startAt || 0))})`;
-  } else if (now >= startMs && now <= endMs) {
+  } else if (phase === "live") {
     saleStatus = (isLive ? "Presale live" : "Presale window active");
   } else {
     saleStatus = finalized ? "Presale closed · Finalized" : "Presale closed";
   }
+
+  /** Claim cue line */
+  const claimCue = useMemo(() => {
+    if (!claimAddr) return "Claim contract not set yet.";
+    if (!finalized) return "Claims open after presale is finalized.";
+    if (!unlockMs) return "Claim unlock time not published yet.";
+    if (!isUnlocked) return `Unlocks ${ts(unlockMs / 1000)} (${rel(unlockMs / 1000)})`;
+    return claimableNum > 0
+      ? `Your claimable: ${fmt18(userClaimable as bigint, 0)} tokens`
+      : "Nothing claimable yet for this wallet.";
+  }, [claimAddr, finalized, unlockMs, isUnlocked, claimableNum, userClaimable]);
+
+  const buyDisabledReason =
+    phase === "pre"
+      ? "Presale hasn’t started yet."
+      : phase === "ended"
+      ? "Presale has ended."
+      : !isLive
+      ? "Presale window is open, but live flag is off."
+      : !isConnected || chainId !== base.id
+      ? "Connect on Base to continue."
+      : "";
 
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100">
@@ -269,7 +301,13 @@ export default function LaunchPage() {
           {/* Left column */}
           <div className="w-full max-w-[640px]">
             {/* Buy card */}
-            <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
+            <div
+              className={`rounded-2xl border p-6 md:p-7 ${
+                phase === "live"
+                  ? "border-zinc-800/70 bg-zinc-900/40"
+                  : "border-zinc-800/50 bg-zinc-900/30 opacity-75"
+              }`}
+            >
               <h1 className="text-center md:text-left text-3xl font-semibold tracking-wide">
                 Launch <span className="text-[#BBA46A]">Your Token</span>
               </h1>
@@ -290,7 +328,8 @@ export default function LaunchPage() {
                     placeholder="0.01"
                     value={ethAmount}
                     onChange={(e) => setEthAmount(e.target.value)}
-                    className="w-full rounded-xl bg-[#0f131b] border border-zinc-800/70 px-4 py-2.5 text-sm outline-none focus:border-[#BBA46A]"
+                    disabled={phase !== "live"}
+                    className="w-full rounded-xl bg-[#0f131b] border border-zinc-800/70 px-4 py-2.5 text-sm outline-none focus:border-[#BBA46A] disabled:opacity-60"
                   />
                   <button
                     onClick={onBuy}
@@ -300,8 +339,13 @@ export default function LaunchPage() {
                         ? "bg-[#BBA46A] text-[#0b0e14] hover:bg-[#d6c289]"
                         : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                     }`}
+                    title={buyDisabledReason}
                   >
-                    {isPending && lastTx === "buy" ? "Submitting…" : confirming && lastTx === "buy" ? "Confirming…" : "Buy"}
+                    {isPending && lastTx === "buy"
+                      ? "Submitting…"
+                      : confirming && lastTx === "buy"
+                      ? "Confirming…"
+                      : "Buy"}
                   </button>
                 </div>
                 {isConnected && chainId !== base.id && (
@@ -310,7 +354,7 @@ export default function LaunchPage() {
                 <div className="text-xs text-zinc-500">Wallet balance: {bal?.formatted ?? "—"} ETH</div>
               </div>
 
-              {/* Progress */}
+              {/* Progress (always visible, but just read-only) */}
               <div className="mt-6">
                 <div className="flex items-center justify-between text-[11px] sm:text-xs text-zinc-400 uppercase tracking-wide">
                   <span>Raised</span>
@@ -322,10 +366,13 @@ export default function LaunchPage() {
                   <div className="h-full bg-[#BBA46A]" style={{ width: `${progress.pct}%` }} />
                 </div>
               </div>
+            </div>
 
             {/* Pie */}
             <div className="mt-6 rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-6 md:p-7">
-              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide text-center md:text-left">Token Distribution</h3>
+              <h3 className="text-lg font-semibold text-[#BBA46A] tracking-wide text-center md:text-left">
+                Token Distribution
+              </h3>
               <div className="mt-4 h-64 md:h-80 overflow-visible">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -381,17 +428,7 @@ export default function LaunchPage() {
                 <p className="mt-2 text-sm text-zinc-400">Claim contract not set yet.</p>
               ) : (
                 <>
-                  <p className="mt-2 text-sm text-zinc-400">
-                    {finalized ? (
-                      isUnlocked ? (
-                        <>Your claimable: <span className="text-[#BBA46A] font-medium">{fmt18(userClaimable as bigint, 0)}</span> tokens</>
-                      ) : (
-                        <>Unlocks at <span className="text-[#BBA46A]">{ts(unlockAt as bigint)}</span> ({rel(Number(unlockAt))})</>
-                      )
-                    ) : (
-                      <>Claims open after presale is finalized.</>
-                    )}
-                  </p>
+                  <p className="mt-2 text-sm text-zinc-400">{claimCue}</p>
 
                   <div className="mt-4 flex gap-3">
                     <button
@@ -402,8 +439,21 @@ export default function LaunchPage() {
                           ? "bg-[#BBA46A] text-[#0b0e14] hover:bg-[#d6c289]"
                           : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                       }`}
+                      title={
+                        canClaim
+                          ? ""
+                          : !finalized
+                          ? "Presale not finalized yet."
+                          : !isUnlocked
+                          ? "Unlock time not reached."
+                          : "Nothing claimable for this wallet."
+                      }
                     >
-                      {isPending && lastTx === "claim" ? "Submitting…" : confirming && lastTx === "claim" ? "Confirming…" : "Claim"}
+                      {isPending && lastTx === "claim"
+                        ? "Submitting…"
+                        : confirming && lastTx === "claim"
+                        ? "Confirming…"
+                        : "Claim"}
                     </button>
 
                     {claimAddr && (
