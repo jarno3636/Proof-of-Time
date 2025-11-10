@@ -44,7 +44,7 @@ export default function Footer({ contractUrl, tokenAddress }: FooterProps) {
             CoinSniper
           </Link>
 
-          {/* Token Contract (clean hyperlink, no URL/address text) */}
+          {/* Token Contract */}
           {url ? (
             <a
               href={url}
@@ -59,8 +59,29 @@ export default function Footer({ contractUrl, tokenAddress }: FooterProps) {
             <span className="text-zinc-600 cursor-default">Set token address</span>
           )}
 
-          <span className="text-zinc-600 cursor-default">CoinMarketCap (coming soon)</span>
-          <span className="text-zinc-600 cursor-default">CoinVote.cc (coming soon)</span>
+          <Link
+            href="https://dex.coinmarketcap.com/token/base/0xe4d22a9af4e14fdf70795dd9c9531295095f0cb6/"
+            target="_blank"
+            className="hover:text-[#BBA46A] transition"
+          >
+            CoinMarketCap
+          </Link>
+
+          <Link
+            href="https://www.geckoterminal.com/base/pools/0x89a77adf4e04d3af3db8794870aabb63c556c9fa"
+            target="_blank"
+            className="hover:text-[#BBA46A] transition"
+          >
+            CoinGecko
+          </Link>
+
+          <Link
+            href="https://coinvote.cc/en/coin/Proof-of-Time-Token"
+            target="_blank"
+            className="hover:text-[#BBA46A] transition"
+          >
+            CoinVote.cc
+          </Link>
 
           <Link
             href="https://www.reddit.com/r/proofoftime/s/0KTf7D2vaM"
