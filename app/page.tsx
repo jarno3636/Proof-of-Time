@@ -1,3 +1,4 @@
+// app/page.tsx (or wherever this Home component lives)
 "use client";
 
 import Nav from "@/components/Nav";
@@ -7,8 +8,10 @@ import Footer from "@/components/Footer";
 /* ---------- Client islands ---------- */
 const RevealRelicsInline = dynamic(() => import("@/components/RevealRelicsInline"), { ssr: false });
 const HomeCountdown      = dynamic(() => import("@/components/HomeCountdown"),      { ssr: false });
-const LaunchShare        = dynamic(() => import("@/components/LaunchShare"),        { ssr: false });
+// Removed LaunchShare
 const RelicLegend        = dynamic(() => import("@/components/RelicLegend"),        { ssr: false });
+// New: BuyButton
+const BuyButton          = dynamic(() => import("@/components/BuyButton"),          { ssr: false });
 
 export default function Home() {
   const hasCountdown = !!process.env.NEXT_PUBLIC_PRESALE_END_UNIX;
@@ -47,12 +50,12 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Token Launch card (one countdown only) */}
+          {/* Token Launch / Trade card */}
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
             <h3 className="text-lg font-semibold text-[#BBA46A]">Token Launch</h3>
 
             <p className="mt-3 text-sm text-zinc-400">
-              Fixed-price presale with LP seeding and a 500M holder rewards program.
+              Live on Aerodrome. LP seeded. 500M holder rewards program.
             </p>
 
             {hasCountdown && (
@@ -64,12 +67,12 @@ export default function Home() {
               </div>
             )}
 
-            {/* Share row (Farcaster + X) */}
-            <div className="mt-4">
-              <LaunchShare />
+            {/* Replaced Share row with Buy button */}
+            <div className="mt-5">
+              <BuyButton />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-5 flex flex-wrap gap-3">
               <a
                 href="/launch"
                 className="inline-flex items-center justify-center rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-2.5 text-sm font-semibold text-[#0b0e14] transition"
