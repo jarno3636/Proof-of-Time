@@ -13,10 +13,6 @@ type Token = {
   tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
-const FARCASTER_MINIAPP_LINK =
-  process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
-  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
-
 export default function ShareBar({
   address: _unused,
   tokens,
@@ -55,7 +51,6 @@ export default function ShareBar({
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
 
-  // ⬇️ NOTE: “See yours: …” line REMOVED
   const buildText = (list: Token[], cap?: number) => {
     const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
     const out = lines.join("\n");
@@ -66,71 +61,84 @@ export default function ShareBar({
     process.env.NEXT_PUBLIC_SITE_URL ||
     (typeof window !== "undefined" ? window.location.origin : "");
 
+  // 🔑 Build a share image URL for 1–3 relics
+  const buildEmbedUrl = (list: Token[]) => {
+    const u = new URL("/api/relic-card", site);
+    const pick = list.slice(0, 3); // keep it readable
+    if (pick.length === 1) {
+      const t = pick[0];
+      u.searchParams.set("symbol", t.symbol);
+      u.searchParams.set("days", String(t.days));
+      u.searchParams.set("tier", (t.tier || "Bronze") as string);
+      if (t.never_sold) u.searchParams.set("never_sold", "1");
+      if (!t.never_sold) u.searchParams.set("no_sell_streak_days", String(t.no_sell_streak_days || 0));
+      u.searchParams.set("token", t.token_address);
+    } else {
+      for (const t of pick) {
+        u.searchParams.append("symbol[]", t.symbol);
+        u.searchParams.append("days[]", String(t.days));
+        u.searchParams.append("tier[]", (t.tier || "Bronze") as string);
+        u.searchParams.append("token[]", t.token_address);
+        u.searchParams.append("never_sold[]", t.never_sold ? "1" : "0");
+        u.searchParams.append("no_sell_streak_days[]", String(t.no_sell_streak_days || 0));
+      }
+    }
+    return u.toString();
+  };
+
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    const img = buildEmbedUrl(tokens);
+    const ok = await shareOrCast({ text, embeds: [img] }); // 👈 embed the image URL
     if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-  }, [tokens, site]);
+  }, [tokens]);
 
   const shareSelectedFC = useCallback(async () => {
     if (!selected.length) return;
     setMsg(null);
     const text = buildText(selected, 320);
-    const url = site + "/";
-    const ok = await shareOrCast({ text, url, embeds: [FARCASTER_MINIAPP_LINK] });
+    const img = buildEmbedUrl(selected);
+    const ok = await shareOrCast({ text, embeds: [img] }); // 👈 embed the image URL
     if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-  }, [selected, site]);
+  }, [selected]);
 
-  // Optional X/Twitter
+  // X/Twitter (image comes from OG on /relic-card too, but adding URL helps CTR)
   const openXShare = useCallback((text: string, url?: string) => {
-    const base = "https://twitter.com/intent/tweet";
+    const base = "https://x.com/intent/tweet";
     const params = new URLSearchParams({ text });
     if (url) params.set("url", url);
     const href = `${base}?${params.toString()}`;
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/"), [tokens, site, openXShare]);
+  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/relic/" /* landing */), [tokens, site, openXShare]);
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), site + "/");
+    openXShare(buildText(selected, 280), site + "/relic/");
   }, [selected, site, openXShare]);
 
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        {/* Farcaster */}
-        <button
-          onClick={shareAllFC}
-          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
-          title="Share all relics on Farcaster"
-        >
+        <button onClick={shareAllFC} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
           Share Altar (Farcaster)
         </button>
         <button
           onClick={shareSelectedFC}
           disabled={!selected.length}
           className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
-          title="Share selected relics on Farcaster"
         >
           Share Selected (Farcaster)
         </button>
 
-        {/* X / Twitter */}
-        <button
-          onClick={shareAllX}
-          className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition"
-          title="Share all relics on X"
-        >
+        <button onClick={shareAllX} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
           Share Altar (X)
         </button>
         <button
           onClick={shareSelectedX}
           disabled={!selected.length}
           className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
-          title="Share selected relics on X"
         >
           Share Selected (X)
         </button>
