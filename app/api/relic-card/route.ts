@@ -1,7 +1,11 @@
 // app/api/relic-card/route.ts
-import { ImageResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";            // render on Edge (fast, no native deps)
+// Optional sharp; falls back to SVG if not present
+let sharp: typeof import("sharp") | null = null;
+try { sharp = require("sharp"); } catch { sharp = null; }
+
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -19,11 +23,11 @@ const W = 1200;
 const H = 630;
 
 const tierColors: Record<Tier, { bg: string; rim: string; glow: string }> = {
-  Bronze:   { bg: "#2b1c10", rim: "#BBA46A", glow: "rgba(187,164,106,0.28)" },
-  Silver:   { bg: "#1f242a", rim: "#d2d6dd", glow: "rgba(190,200,210,0.28)" },
-  Gold:     { bg: "#2a210b", rim: "#f2d37a", glow: "rgba(242,211,122,0.28)" },
-  Platinum: { bg: "#171c28", rim: "#bcd0ff", glow: "rgba(188,208,255,0.28)" },
-  Obsidian: { bg: "#0b0e14", rim: "#5a657a", glow: "rgba(90,101,122,0.28)" },
+  Bronze:   { bg: "#2b1c10", rim: "#C8AC6B", glow: "rgba(200,172,107,0.22)" },
+  Silver:   { bg: "#1f242a", rim: "#D6DCE4", glow: "rgba(198,210,222,0.22)" },
+  Gold:     { bg: "#2a210b", rim: "#F0D17A", glow: "rgba(240,209,122,0.22)" },
+  Platinum: { bg: "#171c28", rim: "#C4D6FF", glow: "rgba(196,214,255,0.22)" },
+  Obsidian: { bg: "#0b0e14", rim: "#6a758a", glow: "rgba(106,117,138,0.22)" },
 };
 
 function short(addr?: string) {
@@ -31,24 +35,29 @@ function short(addr?: string) {
   const a = String(addr);
   return a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
+function esc(s: string) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
-function parseItems(u: URL): Item[] {
+function parseItems(req: NextRequest): Item[] {
+  const u = new URL(req.url);
   const sp = u.searchParams;
-  const sym = sp.getAll("symbol[]");
-  const days = sp.getAll("days[]");
-  const tier = sp.getAll("tier[]");
+
+  const sym   = sp.getAll("symbol[]");
+  const days  = sp.getAll("days[]");
+  const tier  = sp.getAll("tier[]");
   const never = sp.getAll("never_sold[]");
-  const nosell = sp.getAll("no_sell_streak_days[]");
+  const nosel = sp.getAll("no_sell_streak_days[]");
   const token = sp.getAll("token[]");
 
-  const list: Item[] = sym.length
+  const arr: Item[] = sym.length
     ? sym.map((_, i) => ({
-        symbol: sym[i] || "RELIC",
+        symbol: sym[i],
         days: Number(days[i] ?? 0) || 0,
-        tier: ((tier[i] as Tier) || "Bronze"),
+        tier: (tier[i] as Tier) || "Bronze",
         never_sold: /^(1|true|yes)$/i.test(never[i] || ""),
-        no_sell_streak_days: Number(nosell[i] ?? 0) || 0,
-        token: token[i] || "",
+        no_sell_streak_days: Number(nosel[i] ?? 0) || 0,
+        token: token[i],
       }))
     : [{
         symbol: sp.get("symbol") || "RELIC",
@@ -59,203 +68,111 @@ function parseItems(u: URL): Item[] {
         token: sp.get("token") || "",
       }];
 
-  return list.slice(0, 3);
+  return arr.slice(0, 3);
 }
 
-// note: load fonts once per edge instance
-let _fonts: Promise<{ cinzel: ArrayBuffer; inter: ArrayBuffer; interBold: ArrayBuffer }> | null = null;
-function loadFonts() {
-  if (_fonts) return _fonts;
-  _fonts = (async () => {
-    const [cinzel, inter, interBold] = await Promise.all([
-      fetch(new URL("/public/fonts/Cinzel-SemiBold.ttf", import.meta.url)).then(r => r.arrayBuffer()),
-      fetch(new URL("/public/fonts/Inter-Regular.ttf", import.meta.url)).then(r => r.arrayBuffer()),
-      fetch(new URL("/public/fonts/Inter-SemiBold.ttf", import.meta.url)).then(r => r.arrayBuffer()),
-    ]);
-    return { cinzel, inter, interBold };
-  })();
-  return _fonts;
+function relicRowSVG(it: Item, yTop: number) {
+  const c = tierColors[it.tier];
+  const rowH = 170;
+  const midY = yTop + rowH / 2;
+  const coinX = 170;
+
+  const badge = it.never_sold
+    ? `<g>
+         <rect x="260" y="${yTop + 114}" rx="12" ry="12" width="144" height="30" fill="rgba(16,120,80,0.18)" stroke="rgba(80,225,160,0.35)"/>
+         <text x="278" y="${yTop + 133}" font-family="Inter, system-ui, -apple-system, Segoe UI" font-size="14" fill="#b8f8d2">Never sold</text>
+       </g>`
+    : `<g>
+         <rect x="260" y="${yTop + 114}" rx="12" ry="12" width="178" height="30" fill="rgba(60,140,210,0.18)" stroke="rgba(120,190,255,0.35)"/>
+         <text x="278" y="${yTop + 133}" font-family="Inter, system-ui, -apple-system, Segoe UI" font-size="14" fill="#d6ecff">No-sell ${Math.max(0, it.no_sell_streak_days || 0)}d</text>
+       </g>`;
+
+  return `
+  <g>
+    <rect x="48" y="${yTop}" width="${W - 96}" height="${rowH}" rx="20" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.07)"/>
+    <ellipse cx="${coinX}" cy="${midY}" rx="64" ry="64" fill="${c.glow}" />
+    <circle cx="${coinX}" cy="${midY}" r="60" fill="${c.bg}" stroke="${c.rim}" stroke-width="4"/>
+    <circle cx="${coinX}" cy="${midY}" r="46" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)" stroke-width="2"/>
+    <rect x="${coinX - 10}" y="${midY - 10}" width="20" height="20" fill="#fff" opacity="0.95" rx="3"/>
+
+    <text x="260" y="${yTop + 38}" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI"
+          font-size="18" fill="#d8d6cf" letter-spacing="2">${esc(it.tier)} Relic</text>
+    <text x="260" y="${yTop + 78}" font-family="Cinzel, ui-serif, Georgia" font-size="44" fill="#f6f1e6" font-weight="700">
+      $${esc(it.symbol)}
+    </text>
+    ${it.token ? `<text x="260" y="${yTop + 104}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas"
+              font-size="16" fill="rgba(255,255,255,0.65)">${esc(short(it.token))}</text>` : ""}
+
+    <text x="${W - 120}" y="${yTop + 84}" text-anchor="end"
+          font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI"
+          font-size="70" fill="#ffffff" font-weight="800">${Math.max(0, it.days || 0)}</text>
+    <text x="${W - 115}" y="${yTop + 84}" font-family="ui-sans-serif, system-ui"
+          font-size="22" fill="rgba(255,255,255,0.75)">days held</text>
+
+    ${badge}
+  </g>`;
 }
 
-function Coin({ tier }: { tier: Tier }) {
-  const c = tierColors[tier];
-  return (
-    <div
-      style={{
-        width: 120, height: 120, borderRadius: 999,
-        background: `radial-gradient(60% 60% at 50% 50%, rgba(255,255,255,0.08), transparent 60%)`,
-        position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: `0 0 0 4px ${c.rim} inset, 0 0 80px ${c.glow}`,
-        backgroundColor: c.bg,
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 8,
-          borderRadius: 999,
-          border: "2px solid rgba(255,255,255,0.25)",
-        }}
-      />
-      <div
-        style={{
-          width: 24, height: 24, background: "#fff", borderRadius: 4, opacity: 0.9,
-        }}
-      />
-    </div>
-  );
+function buildSVG(items: Item[]) {
+  const top = 130, gap = 12, rowH = 170;
+  const ys = Array.from({ length: items.length }, (_, i) => top + i * (rowH + gap));
+
+  return `
+<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0e14"/>
+      <stop offset="100%" stop-color="#141a22"/>
+    </linearGradient>
+    <filter id="vignette" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="40" />
+    </filter>
+  </defs>
+
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <circle cx="${W - 140}" cy="80" r="160" fill="#BBA46A22" filter="url(#vignette)"/>
+  <circle cx="180" cy="${H - 40}" r="180" fill="#79FFE122" filter="url(#vignette)"/>
+
+  <g transform="translate(48,56)">
+    <text x="0" y="0" font-family="Cinzel, ui-serif, Georgia" font-weight="700" font-size="40" fill="#f2e9d0">
+      Proof of Time
+    </text>
+    <text x="0" y="30" font-family="ui-sans-serif, system-ui" font-size="16" fill="rgba(255,255,255,0.78)">
+      Relics forged by patience
+    </text>
+  </g>
+
+  ${items.map((it, i) => relicRowSVG(it, ys[i])).join("\n")}
+
+  <rect x="0" y="${H - 56}" width="${W}" height="56" fill="rgba(255,255,255,0.03)"/>
+  <text x="${W - 56}" y="${H - 20}" text-anchor="end" font-family="ui-sans-serif, system-ui" font-size="18"
+        fill="rgba(255,255,255,0.78)">Time > hype • #ProofOfTime</text>
+</svg>`.trim();
 }
 
-function Badge({ kind, text }: { kind: "never" | "nosell"; text: string }) {
-  const styles =
-    kind === "never"
-      ? { bg: "rgba(16,120,80,0.18)", br: "rgba(80,225,160,0.35)", color: "#b8f8d2" }
-      : { bg: "rgba(60,140,210,0.18)", br: "rgba(120,190,255,0.35)", color: "#d6ecff" };
+export async function GET(req: NextRequest) {
+  try {
+    const items = parseItems(req);
+    const svg = buildSVG(items);
+    const svgBuf = Buffer.from(svg);
 
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        padding: "6px 12px",
-        borderRadius: 16,
-        background: styles.bg,
-        border: `1px solid ${styles.br}`,
-        color: styles.color,
-        fontFamily: "Inter",
-        fontSize: 18,
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const items = parseItems(url);
-  const fonts = await loadFonts();
-
-  // vertical positions for 1–3 rows
-  const ys = [H / 2 - 190, H / 2, H / 2 + 190].slice(0, items.length);
-
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: W, height: H,
-          display: "flex", flexDirection: "column",
-          background: "linear-gradient(135deg, #0b0e14 0%, #141a22 100%)",
-          color: "#EDEEF2",
-          position: "relative",
-          padding: 0,
-        }}
-      >
-        {/* title */}
-        <div style={{ position: "absolute", left: 64, top: 40 }}>
-          <div style={{ fontFamily: "Cinzel", fontSize: 34, fontWeight: 600, color: "#f2e9d0" }}>
-            Proof of Time
-          </div>
-          <div style={{ fontFamily: "Inter", fontSize: 16, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>
-            Relics forged by patience
-          </div>
-        </div>
-
-        {/* rows */}
-        {items.map((it, i) => {
-          const y = ys[i];
-          const tierLabel = `${it.tier} Relic`;
-          return (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                left: 64, right: 64,
-                top: y - 88, height: 176,
-                borderRadius: 20,
-                background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))",
-                border: "1px solid rgba(255,255,255,0.10)",
-                display: "flex", alignItems: "center", gap: 28, padding: "24px 28px",
-              }}
-            >
-              {/* coin + glow */}
-              <div style={{ position: "relative" }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: -8,
-                    background: tierColors[it.tier].glow,
-                    filter: "blur(18px)",
-                    borderRadius: 999,
-                  }}
-                />
-                <Coin tier={it.tier} />
-              </div>
-
-              {/* copy */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
-                <div style={{ fontFamily: "Inter", fontSize: 22, letterSpacing: 3, opacity: 0.8, color: "#d8d6cf" }}>
-                  {tierLabel}
-                </div>
-                <div style={{ fontFamily: "Cinzel", fontSize: 46, fontWeight: 700, color: "#f6f1e6", lineHeight: 1 }}>
-                  {it.symbol.startsWith("$") ? it.symbol : `$${it.symbol}`}
-                </div>
-                {!!it.token && (
-                  <div style={{ fontFamily: "Inter", fontSize: 18, color: "rgba(255,255,255,0.6)" }}>
-                    {short(it.token)}
-                  </div>
-                )}
-
-                <div style={{ marginTop: 8 }}>
-                  {it.never_sold ? (
-                    <Badge kind="never" text="Never sold" />
-                  ) : (
-                    <Badge kind="nosell" text={`No-sell ${Math.max(0, it.no_sell_streak_days || 0)}d`} />
-                  )}
-                </div>
-              </div>
-
-              {/* right side days */}
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    fontFamily: "Inter",
-                    fontWeight: 800,
-                    fontSize: 64,
-                    color: "#fff",
-                    lineHeight: 1,
-                  }}
-                >
-                  {Math.max(0, it.days || 0)}
-                </div>
-                <div style={{ fontFamily: "Inter", fontSize: 22, color: "rgba(255,255,255,0.72)" }}>days held</div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* footer bar */}
-        <div
-          style={{
-            position: "absolute", left: 0, right: 0, bottom: 0, height: 60,
-            background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "flex-end",
-            paddingRight: 64, fontFamily: "Inter", fontSize: 18, color: "rgba(255,255,255,0.7)",
-          }}
-        >
-          Time &gt; hype • #ProofOfTime
-        </div>
-      </div>
-    ),
-    {
-      width: W,
-      height: H,
-      // force PNG (Warpcast/X both fine with PNG)
-      headers: { "content-type": "image/png" },
-      fonts: [
-        { name: "Cinzel", data: fonts.cinzel, weight: 600, style: "normal" },
-        { name: "Inter", data: fonts.inter, weight: 400, style: "normal" },
-        { name: "Inter", data: fonts.interBold, weight: 600, style: "normal" },
-        { name: "Inter", data: fonts.interBold, weight: 800, style: "normal" },
-      ],
+    if (sharp) {
+      const buf = await sharp(svgBuf).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+      return new NextResponse(buf, {
+        headers: {
+          "content-type": "image/jpeg",
+          "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+        },
+      });
     }
-  );
+
+    return new NextResponse(svgBuf, {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "failed" }, { status: 500 });
+  }
 }
