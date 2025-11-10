@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/snap/route.ts": {
+      "maxDuration": 20,
+      "memory": 1024
+    }
+  }
+}
