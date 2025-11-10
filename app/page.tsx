@@ -1,4 +1,4 @@
-// app/page.tsx (or wherever this Home component lives)
+// app/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
@@ -7,15 +7,12 @@ import Footer from "@/components/Footer";
 
 /* ---------- Client islands ---------- */
 const RevealRelicsInline = dynamic(() => import("@/components/RevealRelicsInline"), { ssr: false });
-const HomeCountdown      = dynamic(() => import("@/components/HomeCountdown"),      { ssr: false });
-// Removed LaunchShare
+// ⛔ Removed HomeCountdown + LaunchShare
 const RelicLegend        = dynamic(() => import("@/components/RelicLegend"),        { ssr: false });
-// New: BuyButton
+// ✅ Buy button
 const BuyButton          = dynamic(() => import("@/components/BuyButton"),          { ssr: false });
 
 export default function Home() {
-  const hasCountdown = !!process.env.NEXT_PUBLIC_PRESALE_END_UNIX;
-
   return (
     <main className="min-h-screen bg-[#0b0e14] text-zinc-100 flex flex-col">
       <Nav />
@@ -39,7 +36,7 @@ export default function Home() {
               <RevealRelicsInline />
             </div>
 
-            {/* Optional secondary CTA */}
+            {/* Secondary CTA */}
             <div className="mt-4">
               <a
                 href="/launch"
@@ -50,24 +47,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Token Launch / Trade card */}
+          {/* Trade card (no countdown/share) */}
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
-            <h3 className="text-lg font-semibold text-[#BBA46A]">Token Launch</h3>
+            <h3 className="text-lg font-semibold text-[#BBA46A]">Trade PøT</h3>
 
             <p className="mt-3 text-sm text-zinc-400">
               Live on Aerodrome. LP seeded. 500M holder rewards program.
             </p>
 
-            {hasCountdown && (
-              <div className="mt-2 text-xs text-zinc-500">
-                Sale ends in{" "}
-                <span className="text-[#BBA46A] font-semibold">
-                  <HomeCountdown />
-                </span>
-              </div>
-            )}
-
-            {/* Replaced Share row with Buy button */}
             <div className="mt-5">
               <BuyButton />
             </div>
@@ -83,7 +70,7 @@ export default function Home() {
                 href="/pot"
                 className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
               >
-                Holder Rewards (PoT)
+                Holder Rewards (PøT)
               </a>
             </div>
           </div>
@@ -117,7 +104,7 @@ export default function Home() {
         </p>
       </section>
 
-      {/* ---------- Footer (component) ---------- */}
+      {/* ---------- Footer ---------- */}
       <Footer />
     </main>
   );
