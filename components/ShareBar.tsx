@@ -13,8 +13,15 @@ type Token = {
   tier?: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 };
 
+function siteOrigin() {
+  const env = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
+  if (env) return env.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+}
+
 export default function ShareBar({
-  address: _unused,
+  address,
   tokens,
   selectedSymbols = [],
 }: {
@@ -57,53 +64,51 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  const site =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (typeof window !== "undefined" ? window.location.origin : "");
+  /** Build the live page path (optionally with selected symbols) + screenshot URL */
+  const buildPaths = (useSelected: boolean) => {
+    const basePage = `/relic/${address.toLowerCase()}`;
+    const selected = useSelected && selectedSymbols.length
+      ? `?selected=${encodeURIComponent(selectedSymbols.join(","))}`
+      : "";
+    const pagePath = `${basePage}${selected}`;
 
-  // 🔑 Build a share image URL for 1–3 relics
-  const buildEmbedUrl = (list: Token[]) => {
-    const u = new URL("/api/relic-card", site);
-    const pick = list.slice(0, 3); // keep it readable
-    if (pick.length === 1) {
-      const t = pick[0];
-      u.searchParams.set("symbol", t.symbol);
-      u.searchParams.set("days", String(t.days));
-      u.searchParams.set("tier", (t.tier || "Bronze") as string);
-      if (t.never_sold) u.searchParams.set("never_sold", "1");
-      if (!t.never_sold) u.searchParams.set("no_sell_streak_days", String(t.no_sell_streak_days || 0));
-      u.searchParams.set("token", t.token_address);
-    } else {
-      for (const t of pick) {
-        u.searchParams.append("symbol[]", t.symbol);
-        u.searchParams.append("days[]", String(t.days));
-        u.searchParams.append("tier[]", (t.tier || "Bronze") as string);
-        u.searchParams.append("token[]", t.token_address);
-        u.searchParams.append("never_sold[]", t.never_sold ? "1" : "0");
-        u.searchParams.append("no_sell_streak_days[]", String(t.no_sell_streak_days || 0));
-      }
-    }
-    return u.toString();
+    // JPEG produced by the API (exact DOM of the altar)
+    const snap = `/api/snap?path=${encodeURIComponent(pagePath)}&selector=${encodeURIComponent(
+      '[data-share="altar"]'
+    )}&dpr=2&w=1200&wait=1200`;
+
+    return { pagePath, snap };
   };
 
+  /** Farcaster: link to page; embed the screenshot for the card */
   const shareAllFC = useCallback(async () => {
     setMsg(null);
     const text = buildText(tokens, 320);
-    const img = buildEmbedUrl(tokens);
-    const ok = await shareOrCast({ text, embeds: [img] }); // 👈 embed the image URL
+    const { pagePath, snap } = buildPaths(false);
+    const origin = siteOrigin();
+    const ok = await shareOrCast({
+      text,
+      url: origin + pagePath,
+      embeds: [origin + snap],
+    });
     if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-  }, [tokens]);
+  }, [tokens, address, selectedSymbols]);
 
   const shareSelectedFC = useCallback(async () => {
     if (!selected.length) return;
     setMsg(null);
     const text = buildText(selected, 320);
-    const img = buildEmbedUrl(selected);
-    const ok = await shareOrCast({ text, embeds: [img] }); // 👈 embed the image URL
+    const { pagePath, snap } = buildPaths(true);
+    const origin = siteOrigin();
+    const ok = await shareOrCast({
+      text,
+      url: origin + pagePath,
+      embeds: [origin + snap],
+    });
     if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-  }, [selected]);
+  }, [selected, address, selectedSymbols]);
 
-  // X/Twitter (image comes from OG on /relic-card too, but adding URL helps CTR)
+  /** X/Twitter: just link to the live page */
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://x.com/intent/tweet";
     const params = new URLSearchParams({ text });
@@ -112,11 +117,17 @@ export default function ShareBar({
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
   }, []);
-  const shareAllX = useCallback(() => openXShare(buildText(tokens, 280), site + "/relic/" /* landing */), [tokens, site, openXShare]);
+
+  const shareAllX = useCallback(() => {
+    const { pagePath } = buildPaths(false);
+    openXShare(buildText(tokens, 280), siteOrigin() + pagePath);
+  }, [tokens, address, selectedSymbols, openXShare]);
+
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
-    openXShare(buildText(selected, 280), site + "/relic/");
-  }, [selected, site, openXShare]);
+    const { pagePath } = buildPaths(true);
+    openXShare(buildText(selected, 280), siteOrigin() + pagePath);
+  }, [selected, address, selectedSymbols, openXShare]);
 
   return (
     <div className="mt-6 space-y-2">
