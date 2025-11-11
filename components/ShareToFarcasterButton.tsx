@@ -26,7 +26,7 @@ function isInFarcasterEnv(): boolean {
 type Props = {
   text: string;
   embeds?: string[] | readonly string[];
-  /** Optional web URL (ignored for Farcaster; still passed through to web composer if you want, but not injected into text) */
+  /** Optional web URL (NOT injected into text). Added to embeds for web composer only. */
   url?: string;
   className?: string;
   disabled?: boolean;
@@ -46,12 +46,11 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
-    // DO NOT add the URL to the text for Farcaster
     const fullText = (text || "").trim();
     const embedList: string[] = Array.isArray(embeds) ? embeds.map(String) : [];
 
     if (isInFarcasterEnv()) {
-      // IN WARPCAST: try SDK compose; never open web composer
+      // IN WARPCAST: try SDK compose; do not open web composer
       const typedComposeCast = composeCast as unknown as (args: {
         text?: string;
         embeds?: string[];
@@ -71,8 +70,11 @@ export default function ShareToFarcasterButton({
       return;
     }
 
-    // OUTSIDE WARPCAST: open Warpcast web composer (URL NOT injected into text)
-    const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList });
+    // OUTSIDE WARPCAST: open Warpcast web composer (URL NOT injected into text).
+    // If a url prop was provided, pass it as an additional embed.
+    const finalEmbeds = url ? [...embedList, url] : embedList;
+    const href = buildWarpcastCompose({ text: fullText, embeds: finalEmbeds });
+
     try {
       const w = window.open(href, "_blank", "noopener,noreferrer");
       if (!w) window.location.href = href;
