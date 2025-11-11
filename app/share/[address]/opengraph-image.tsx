@@ -1,4 +1,3 @@
-// app/share/[address]/opengraph-image.tsx
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
@@ -32,24 +31,32 @@ async function fetchRelics(addr: string): Promise<Token[]> {
   }
 }
 
+/** Accept ?selected=SYM1,SYM2 (preferred) or legacy ?pick=SYM1,SYM2 */
+function parseSelected(searchParams: Record<string, string | string[] | undefined>) {
+  const get = (k: string) => {
+    const v = searchParams[k];
+    return Array.isArray(v) ? v[0] : v || "";
+  };
+  const raw = (get("selected") || get("pick")).trim();
+  return raw
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 export default async function Image({
   params,
   searchParams,
 }: {
   params: { address: string };
-  searchParams: { [k: string]: string };
+  searchParams: { [k: string]: string | string[] | undefined };
 }) {
   const W = 1200;
   const H = 630;
 
   const address = (params.address || "").toLowerCase();
-
-  const picks =
-    (searchParams?.pick || "")
-      .split(",")
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 3) || [];
+  const picks = parseSelected(searchParams);
 
   const all = await fetchRelics(address);
 
