@@ -77,6 +77,7 @@ export default async function Page({
   );
   const picks = parseSelected(sp);
 
+  // Preload (to keep current behavior / ranking); OG image uses the same data anyway
   const all = await fetchRelics(address);
   const chosen =
     picks.length > 0
@@ -86,13 +87,13 @@ export default async function Page({
           .slice(0, 3)
       : all.sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
 
-  // Canonical share link (used for Farcaster + X; no visible URL text on page)
+  // Canonical page URL (what we embed/share)
   const shareUrl = `${origin}/share/${address}${
     picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""
   }`;
 
-  // ✅ Direct OG image endpoint (no .png suffix); downloadable
-  const pngUrl =
+  // ✅ Direct OG image URL (server route returns image/png) — also used for the inline <img />
+  const imgUrl =
     `${origin}/share/${address}/opengraph-image` +
     (picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : "") +
     `&v=${Date.now().toString().slice(-6)}`;
@@ -100,7 +101,7 @@ export default async function Page({
   return (
     <main className="min-h-[100svh] bg-[#0b0e14] text-[#EDEEF2]">
       <div className="mx-auto max-w-5xl p-6">
-        {/* Header + short tagline */}
+        {/* Header */}
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
@@ -112,7 +113,7 @@ export default async function Page({
           </div>
 
           <a
-            href={pngUrl}
+            href={imgUrl}
             download
             className="rounded-xl px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-sm shrink-0"
             title="Download image"
@@ -121,68 +122,19 @@ export default async function Page({
           </a>
         </header>
 
-        {/* Altar-styled preview */}
-        <section
-          data-share="altar"
-          className="relative mx-auto max-w-5xl mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
-        >
-          <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-white/[0.06] to-transparent opacity-50" />
-          <div className="relative mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#BBA46A]" />
-              <h2 className="text-sm font-semibold tracking-widest text-zinc-200 uppercase">
-                Relic Altar
-              </h2>
-            </div>
-            <div className="text-xs text-zinc-400">
-              {chosen.length
-                ? `${chosen.length} Relic${chosen.length > 1 ? "s" : ""}`
-                : "No Relics Yet"}
-            </div>
-          </div>
+        {/* The image itself (what social scrapers also use) */}
+        <figure className="mt-6">
+          <img
+            src={imgUrl}
+            alt="Proof of Time — your relics"
+            className="w-full rounded-2xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,.35)]"
+            loading="eager"
+            decoding="async"
+          />
+          <figcaption className="sr-only">Relics forged by patience</figcaption>
+        </figure>
 
-          <div className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(chosen.length
-              ? chosen
-              : [
-                  {
-                    token_address:
-                      "0x0000000000000000000000000000000000000000" as `0x${string}`,
-                    symbol: "RELIC",
-                    days: 0,
-                    no_sell_streak_days: 0,
-                    never_sold: true,
-                    tier: "Bronze" as Tier,
-                  },
-                ]
-            ).map((t, i) => (
-              <div
-                key={i}
-                className="relative rounded-2xl p-4 bg-[#0B0E14]/95 ring-1 ring-white/10 overflow-hidden"
-              >
-                <div className="text-[11px] tracking-[0.18em] uppercase opacity-70">
-                  {t.tier} Relic
-                </div>
-                <div className="text-2xl font-semibold leading-tight">
-                  ${t.symbol}
-                </div>
-                <div className="mt-2 text-sm">
-                  <span className="text-3xl font-bold tracking-tight">
-                    {Math.max(0, t.days || 0)}
-                  </span>
-                  <span className="ml-2 opacity-80">days held</span>
-                </div>
-                <div className="mt-2 text-xs opacity-80">
-                  {t.never_sold
-                    ? "Never sold"
-                    : `No-sell ${Math.max(0, t.no_sell_streak_days || 0)}d`}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Client-only share buttons (separate component) */}
+        {/* Share buttons (no visible URL/text on the page) */}
         <ShareActions className="mt-6" shareUrl={shareUrl} />
 
         <div className="mt-4">
