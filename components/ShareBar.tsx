@@ -20,6 +20,33 @@ function siteOrigin() {
   return "https://proofoftime.vercel.app";
 }
 
+/** Quick HEAD probe so we only embed URLs that are actually alive. */
+async function headOk(url: string, timeoutMs = 1800): Promise<boolean> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { method: "HEAD", signal: ctl.signal, cache: "no-store" });
+    clearTimeout(t);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Very light in-app detection (Warpcast webview / MiniApp SDK). */
+function isInFarcasterEnv(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const w = window as any;
+    const hasMini = !!w.farcaster || !!w.Farcaster?.mini || !!w.Farcaster?.mini?.sdk;
+    const inIframe = window.self !== window.top;
+    const ua = typeof navigator !== "undefined" && /Warpcast|Farcaster/i.test(navigator.userAgent || "");
+    return hasMini || ua || inIframe;
+  } catch {
+    return false;
+  }
+}
+
 export default function ShareBar({
   address,
   tokens,
@@ -59,9 +86,11 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  // Build OG image URL (1–3 items), like your Bots flow
-  const buildOgUrl = (list: Token[]) => {
+  /** Build absolute /api/relic-og image URL for 1–3 items + the human altar page. */
+  function buildShareTargets(list: Token[]) {
     const origin = siteOrigin();
+    const altarUrl = `${origin}/relic/${(address || "").toLowerCase()}`;
+
     const u = new URL("/api/relic-og", origin);
     const pick = list.slice(0, 3);
     if (pick.length === 1) {
@@ -82,30 +111,52 @@ export default function ShareBar({
         u.searchParams.append("no_sell_streak_days[]", String(t.no_sell_streak_days || 0));
       }
     }
-    // light cache-buster for socials
+    // tiny cache-buster so social scrapers refetch the latest
     u.searchParams.set("v", Date.now().toString().slice(-6));
-    return u.toString();
-  };
 
-  const altarUrl = `${siteOrigin()}/relic/${(address || "").toLowerCase()}`;
+    return { altarUrl, embedUrl: u.toString() };
+  }
 
-  const shareFC = useCallback(async (list: Token[]) => {
-    setMsg(null);
-    const text = buildText(list, 320);
-    const img = buildOgUrl(list);
-    const ok = await shareOrCast({ text, url: altarUrl, embeds: [img] });
-    if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
-  }, [altarUrl]);
+  /** Farcaster: prefer embed image; if not ready, include the page URL in text inside Warpcast. */
+  const shareFC = useCallback(
+    async (list: Token[]) => {
+      setMsg(null);
+      const { altarUrl, embedUrl } = buildShareTargets(list);
+      const baseText = buildText(list, 320);
 
-  const shareX = useCallback((list: Token[]) => {
-    const text = buildText(list, 280);
-    const base = "https://x.com/intent/tweet";
-    const params = new URLSearchParams({ text, url: altarUrl });
-    const href = `${base}?${params.toString()}`;
-    // break out of in-app browsers that trap popups
-    const w = window.open(href, "_top", "noopener,noreferrer");
-    if (!w) window.location.href = href;
-  }, [altarUrl]);
+      const embedReady = await headOk(embedUrl, 1800);
+      const inFC = isInFarcasterEnv();
+
+      const text = inFC && !embedReady ? `${baseText}\n${altarUrl}` : baseText;
+
+      const ok = await shareOrCast({
+        text,
+        url: inFC ? undefined : altarUrl, // Warpcast ignores url; keep it for web composer only
+        embeds: embedReady ? [embedUrl] : [],
+      });
+
+      if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
+      else if (!embedReady) setMsg("Image still warming up — shared with page link instead.");
+    },
+    [address, tokens, selectedSymbols]
+  );
+
+  /** X/Twitter: share the page URL (OG tags can be added later if desired). */
+  const shareX = useCallback(
+    (list: Token[]) => {
+      const { altarUrl } = buildShareTargets(list);
+      const text = buildText(list, 280);
+      const intent = new URL("https://x.com/intent/tweet");
+      intent.searchParams.set("text", text);
+      intent.searchParams.set("url", altarUrl);
+      const href = intent.toString();
+
+      // break out of in-app browsers that trap popups
+      const w = window.open(href, "_top", "noopener,noreferrer");
+      if (!w) window.location.href = href;
+    },
+    [address, tokens, selectedSymbols]
+  );
 
   return (
     <div className="mt-6 space-y-2">
