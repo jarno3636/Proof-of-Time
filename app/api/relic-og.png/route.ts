@@ -1,11 +1,10 @@
-// Same output as /api/relic-og, but the path ends with .png so Warpcast treats it as an image.
+// app/api/relic-og.png/route.ts
 import type { NextRequest } from "next/server";
+import { GET as relicGET } from "../relic-og/route";
+
 export const runtime = "edge";
 
-// Reuse the generator from the main route
-export { GET as _GET } from "../relic-og/route";
-
-// Optionally provide fast 204 for HEAD probes
+// Fast probe for composers (optional)
 export async function HEAD() {
   return new Response(null, {
     status: 204,
@@ -14,7 +13,6 @@ export async function HEAD() {
 }
 
 // Delegate GET to the original handler
-export async function GET(req: NextRequest) {
-  // @ts-expect-error re-exported alias
-  return _GET(req);
+export function GET(req: NextRequest) {
+  return relicGET(req as any);
 }
