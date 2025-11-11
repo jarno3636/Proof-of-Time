@@ -1,12 +1,17 @@
 {
   "functions": {
     "app/api/snap/route.ts": {
+      "runtime": "nodejs20.x",
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 15,
+      "includeFiles": [
+        "node_modules/@sparticuz/chromium/**",
+        "node_modules/puppeteer-core/**"
+      ]
     },
     "app/api/relic-card/route.ts": {
-      "memory": 512,
-      "maxDuration": 30
+      "runtime": "nodejs20.x",
+      "memory": 512
     }
   }
 }
