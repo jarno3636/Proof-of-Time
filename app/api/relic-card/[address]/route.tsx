@@ -1,4 +1,3 @@
-// app/api/relic-card/[address]/route.tsx
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
@@ -18,10 +17,7 @@ type Token = {
 
 const W = 1200;
 const H = 630;
-
-// ✅ typed zero address that satisfies `0x${string}`
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-
 const VALID_TIERS: Tier[] = ["Bronze", "Silver", "Gold", "Platinum", "Obsidian"];
 const isTier = (t: any): t is Tier => VALID_TIERS.includes(t);
 
@@ -112,14 +108,18 @@ function normalizeToken(x: any): Token {
 }
 
 async function fetchRelicsAbs(origin: string, address: string): Promise<Token[]> {
-  const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
-  if (!r.ok) return [];
-  const j = await r.json().catch(() => ({ tokens: [] as any[] }));
-  const raw: any[] = Array.isArray(j?.tokens) ? j.tokens : [];
-  return raw
-    .map(normalizeToken)
-    .sort((a, b) => (b.days || 0) - (a.days || 0))
-    .slice(0, 3);
+  try {
+    const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
+    if (!r.ok) return [];
+    const j = await r.json().catch(() => ({ tokens: [] as any[] }));
+    const raw: any[] = Array.isArray(j?.tokens) ? j.tokens : [];
+    return raw
+      .map(normalizeToken)
+      .sort((a, b) => (b.days || 0) - (a.days || 0))
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
 }
 
 // Fast HEAD for “is it alive?”
@@ -131,77 +131,102 @@ export async function HEAD() {
 }
 
 export async function GET(_req: NextRequest, ctx: { params: { address: string } }) {
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_URL?.replace(/\/$/, "") ||
-    "https://proofoftime.vercel.app";
+  try {
+    const origin =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      process.env.NEXT_PUBLIC_URL?.replace(/\/$/, "") ||
+      "https://proofoftime.vercel.app";
 
-  const addr = (ctx.params?.address || "").toLowerCase();
-  const items = await fetchRelicsAbs(origin, addr);
+    const addr = (ctx.params?.address || "").toLowerCase();
+    const items = await fetchRelicsAbs(origin, addr);
 
-  const rows: Token[] =
-    items.length > 0
-      ? items
-      : [
-          {
-            token_address: ZERO_ADDR, // ✅ typed
-            symbol: "RELIC",
-            days: 0,
-            no_sell_streak_days: 0,
-            never_sold: true,
-            tier: "Bronze",
-          },
-        ];
+    const rows: Token[] =
+      items.length > 0
+        ? items
+        : [
+            {
+              token_address: ZERO_ADDR,
+              symbol: "RELIC",
+              days: 0,
+              no_sell_streak_days: 0,
+              never_sold: true,
+              tier: "Bronze",
+            },
+          ];
 
-  const body = (
-    <div
-      style={{
-        width: W,
-        height: H,
-        display: "flex",
-        flexDirection: "column",
-        background: "linear-gradient(135deg,#0b0e14,#141a22)",
-        color: "#fff",
-        padding: 0,
-        position: "relative",
-      }}
-    >
-      <div style={{ padding: "56px 48px 0 48px" }}>
-        <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>Proof of Time</div>
-        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>Relics forged by patience</div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>
-        {rows.map((t, i) => (
-          <Row key={i} t={t} />
-        ))}
-      </div>
-
+    const body = (
       <div
         style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 56,
-          background: "rgba(255,255,255,0.03)",
+          width: W,
+          height: H,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          paddingRight: 56,
+          flexDirection: "column",
+          background: "linear-gradient(135deg,#0b0e14,#141a22)",
+          color: "#fff",
+          padding: 0,
+          position: "relative",
         }}
       >
-        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
-      </div>
-    </div>
-  );
+        <div style={{ padding: "56px 48px 0 48px" }}>
+          <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>Proof of Time</div>
+          <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>Relics forged by patience</div>
+        </div>
 
-  return new ImageResponse(body, {
-    width: W,
-    height: H,
-    headers: {
-      "content-type": "image/png",
-      "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
-    },
-  });
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>
+          {rows.map((t, i) => (
+            <Row key={i} t={t} />
+          ))}
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 56,
+            background: "rgba(255,255,255,0.03)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            paddingRight: 56,
+          }}
+        >
+          <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
+        </div>
+      </div>
+    );
+
+    return new ImageResponse(body, {
+      width: W,
+      height: H,
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+      },
+    });
+  } catch {
+    // Never 500 for previewers
+    const fallback = (
+      <div
+        style={{
+          width: W,
+          height: H,
+          display: "grid",
+          placeItems: "center",
+          background: "#0b0e14",
+          color: "#d8d6cf",
+          fontSize: 42,
+          fontWeight: 800,
+        }}
+      >
+        Proof of Time
+      </div>
+    );
+    return new ImageResponse(fallback, {
+      width: W,
+      height: H,
+      headers: { "content-type": "image/png", "cache-control": "no-store" },
+    });
+  }
 }
