@@ -1,10 +1,12 @@
+// app/share/[address]/opengraph-image.tsx
 import { ImageResponse } from "next/og";
 
+/** --- OG basics --- */
 export const runtime = "edge";
 export const contentType = "image/png";
 export const size = { width: 1200, height: 630 };
-export const revalidate = 60;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;           // cache for social scrapers
+export const dynamic = "force-dynamic"; // but recompute when params change
 
 type Tier = "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 type Token = {
@@ -16,6 +18,7 @@ type Token = {
   tier: Tier;
 };
 
+/** Resolve absolute origin on server */
 function absOrigin() {
   const env = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_URL || "").trim();
   if (env) return env.replace(/\/$/, "");
@@ -24,9 +27,13 @@ function absOrigin() {
   return "https://proofoftime.vercel.app";
 }
 
+/** Fetch relics with defensive guards */
 async function fetchRelics(addr: string): Promise<Token[]> {
   try {
-    const r = await fetch(`${absOrigin()}/api/relic/${addr}`, { cache: "no-store" });
+    const r = await fetch(`${absOrigin()}/api/relic/${addr}`, {
+      // OG routes run on the edge; avoid long caching here so the image reflects updates
+      cache: "no-store",
+    });
     if (!r.ok) return [];
     const j = await r.json().catch(() => ({ tokens: [] as Token[] }));
     return (j?.tokens || []) as Token[];
@@ -35,6 +42,7 @@ async function fetchRelics(addr: string): Promise<Token[]> {
   }
 }
 
+/** Accept ?selected=SYM1,SYM2 or legacy ?pick=... */
 function parseSelected(params: Record<string, string | string[] | undefined>) {
   const get = (k: string) => {
     const v = params[k];
@@ -48,6 +56,10 @@ function parseSelected(params: Record<string, string | string[] | undefined>) {
     .slice(0, 3);
 }
 
+/** Small helpers */
+const clampNonNeg = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+const sym = (s: string) => (s?.startsWith("$") ? s : `$${s || "RELIC"}`);
+
 export default async function Image({
   params,
   searchParams,
@@ -55,9 +67,12 @@ export default async function Image({
   params: { address: string };
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const W = 1200, H = 630;
+  const W = 1200;
+  const H = 630;
+
   const address = (params.address || "").toLowerCase();
   const picks = parseSelected(searchParams);
+
   const all = await fetchRelics(address);
 
   const chosen =
@@ -66,10 +81,13 @@ export default async function Image({
           .filter((t) => picks.includes(t.symbol.toUpperCase()))
           .filter((t, i, arr) => arr.findIndex((x) => x.symbol === t.symbol) === i)
           .slice(0, 3)
-      : all.sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
+      : [...all].sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
 
+  /** Row component (inline for Next/og) */
   const Row = (t: Token) => {
-    const badge = t.never_sold ? "Never sold" : `No-sell ${Math.max(0, t.no_sell_streak_days || 0)}d`;
+    const badge = t.never_sold
+      ? "Never sold"
+      : `No-sell ${clampNonNeg(t.no_sell_streak_days)}d`;
     return (
       <div
         style={{
@@ -78,11 +96,12 @@ export default async function Image({
           width: W - 96,
           padding: 16,
           borderRadius: 20,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.07)",
+          background: "rgba(255,255,255,0.045)",
+          border: "1px solid rgba(255,255,255,0.08)",
           alignItems: "center",
         }}
       >
+        {/* coin avatar */}
         <div style={{ position: "relative", width: 120, height: 120 }}>
           <div style={{ position: "absolute", inset: 0, borderRadius: 999, background: "rgba(255,255,255,0.12)" }} />
           <div style={{ position: "absolute", inset: 8, borderRadius: 999, background: "#141a22", border: "4px solid #C8AC6B" }} />
@@ -90,9 +109,13 @@ export default async function Image({
           <div style={{ position: "absolute", left: 50, top: 50, width: 20, height: 20, borderRadius: 4, background: "#fff", opacity: 0.95 }} />
         </div>
 
+        {/* text */}
         <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
           <div style={{ color: "#d8d6cf", fontSize: 18, letterSpacing: 2 }}>{t.tier} Relic</div>
-          <div style={{ color: "#f6f1e6", fontSize: 44, fontWeight: 800, fontFamily: "serif" }}>${t.symbol}</div>
+          <div style={{ color: "#f6f1e6", fontSize: 44, fontWeight: 800, fontFamily: "serif" }}>
+            {sym(t.symbol)}
+          </div>
+
           <div
             style={{
               marginTop: 10,
@@ -111,49 +134,78 @@ export default async function Image({
           </div>
         </div>
 
+        {/* days */}
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: "#fff", fontSize: 70, fontWeight: 800, lineHeight: 0.9 }}>{Math.max(0, t.days || 0)}</div>
+          <div style={{ color: "#fff", fontSize: 72, fontWeight: 800, lineHeight: 0.9 }}>
+            {clampNonNeg(t.days)}
+          </div>
           <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 22, marginTop: 4 }}>days held</div>
         </div>
       </div>
     );
   };
 
-  const rows = (chosen.length ? chosen : [{
-    token_address: "0x0000000000000000000000000000000000000000" as `0x${string}`,
-    symbol: "RELIC",
-    days: 0,
-    no_sell_streak_days: 0,
-    never_sold: true,
-    tier: "Bronze" as const,
-  }]).map((t, i) => <Row key={i as any} {...t} />);
+  /** Fallback when nothing is found */
+  const safeRows =
+    (chosen.length ? chosen : [
+      {
+        token_address: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+        symbol: "RELIC",
+        days: 0,
+        no_sell_streak_days: 0,
+        never_sold: true,
+        tier: "Bronze" as const,
+      },
+    ]).map((t, i) => <Row key={i as any} {...t} />);
 
   return new ImageResponse(
     (
       <div
         style={{
-          width: W, height: H, display: "flex", flexDirection: "column",
-          background: "linear-gradient(135deg,#0b0e14,#141a22)",
-          color: "#fff", padding: 0, position: "relative",
+          width: W,
+          height: H,
+          display: "flex",
+          flexDirection: "column",
+          background:
+            "radial-gradient(1200px 520px at 20% -10%, rgba(187,164,106,.14), rgba(187,164,106,0) 45%), linear-gradient(135deg,#0b0e14,#141a22)",
+          color: "#fff",
+          position: "relative",
         }}
       >
+        {/* Header */}
         <div style={{ padding: "56px 48px 0 48px" }}>
-          <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>Proof of Time</div>
+          <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>
+            Proof of Time
+          </div>
           <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>
             Relics forged by patience — I stood the test of time.
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>{rows}</div>
+        {/* Rows */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>
+          {safeRows}
+        </div>
 
+        {/* Footer strip */}
         <div
           style={{
-            position: "absolute", left: 0, right: 0, bottom: 0, height: 56,
-            background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center",
-            justifyContent: "flex-end", paddingRight: 56,
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 56,
+            background: "rgba(255,255,255,0.03)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 48px",
           }}
         >
-          <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
+          <div style={{ color: "rgba(255,255,255,0.76)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
+          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>
+            {address.slice(0, 6)}…{address.slice(-4)}
+          </div>
         </div>
       </div>
     ),
