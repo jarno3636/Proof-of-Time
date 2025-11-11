@@ -1,8 +1,10 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+export const size = { width: 1200, height: 630 };
+export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 type Tier = "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
 type Token = {
@@ -17,6 +19,8 @@ type Token = {
 function absOrigin() {
   const env = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_URL || "").trim();
   if (env) return env.replace(/\/$/, "");
+  const v = process.env.VERCEL_URL?.trim();
+  if (v) return `https://${v}`;
   return "https://proofoftime.vercel.app";
 }
 
@@ -31,10 +35,9 @@ async function fetchRelics(addr: string): Promise<Token[]> {
   }
 }
 
-/** Accept ?selected=SYM1,SYM2 (preferred) or legacy ?pick=SYM1,SYM2 */
-function parseSelected(searchParams: Record<string, string | string[] | undefined>) {
+function parseSelected(params: Record<string, string | string[] | undefined>) {
   const get = (k: string) => {
-    const v = searchParams[k];
+    const v = params[k];
     return Array.isArray(v) ? v[0] : v || "";
   };
   const raw = (get("selected") || get("pick")).trim();
@@ -50,14 +53,11 @@ export default async function Image({
   searchParams,
 }: {
   params: { address: string };
-  searchParams: { [k: string]: string | string[] | undefined };
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const W = 1200;
-  const H = 630;
-
+  const W = 1200, H = 630;
   const address = (params.address || "").toLowerCase();
   const picks = parseSelected(searchParams);
-
   const all = await fetchRelics(address);
 
   const chosen =
@@ -132,35 +132,25 @@ export default async function Image({
     (
       <div
         style={{
-          width: W,
-          height: H,
-          display: "flex",
-          flexDirection: "column",
+          width: W, height: H, display: "flex", flexDirection: "column",
           background: "linear-gradient(135deg,#0b0e14,#141a22)",
-          color: "#fff",
-          padding: 0,
-          position: "relative",
+          color: "#fff", padding: 0, position: "relative",
         }}
       >
         <div style={{ padding: "56px 48px 0 48px" }}>
           <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>Proof of Time</div>
-          <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>Relics forged by patience</div>
+          <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>
+            Relics forged by patience — I stood the test of time.
+          </div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>{rows}</div>
 
         <div
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 56,
-            background: "rgba(255,255,255,0.03)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            paddingRight: 56,
+            position: "absolute", left: 0, right: 0, bottom: 0, height: 56,
+            background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center",
+            justifyContent: "flex-end", paddingRight: 56,
           }}
         >
           <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
