@@ -1,4 +1,3 @@
-// lib/share.ts
 import { composeCast } from "./miniapp";
 
 /* ---------- Config ---------- */
@@ -57,47 +56,10 @@ export function isInFarcasterEnv(): boolean {
   }
 }
 
-function isSameOrigin(urlA: string, urlB: string) {
-  try {
-    const a = new URL(urlA);
-    const b = new URL(urlB);
-    return a.origin === b.origin;
-  } catch {
-    return false;
-  }
-}
-
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
   return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
-}
-
-/* ---------- Prefer mini link in Warpcast (path rewrite), not injected into text ---------- */
-export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = {}) {
-  const canonical = safeUrl(webUrl);
-  if (!canonical) return "";
-
-  if (/^warpcast:|^farcaster:/i.test(canonical)) return canonical;
-  if (/^https:\/\/warpcast\.com\/~\/compose/i.test(canonical)) return canonical;
-
-  const inWarpcast = isInFarcasterEnv() || forceMini;
-  const MINI_BASE = process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
-
-  if (!MINI_BASE || !inWarpcast) return canonical;
-  if (!isSameOrigin(canonical, siteOrigin())) return canonical;
-
-  try {
-    const u = new URL(canonical);
-    const mini = new URL(MINI_BASE);
-    const normalizedPath = u.pathname.startsWith("/") ? u.pathname : `/${u.pathname}`;
-    mini.pathname = (mini.pathname.replace(/\/$/, "") + normalizedPath).replace(/\/{2,}/g, "/");
-    mini.search = u.search;
-    mini.hash = u.hash;
-    return mini.toString();
-  } catch {
-    return canonical;
-  }
 }
 
 /* ---------- Warpcast web composer URL (do NOT inject URL into text) ---------- */
@@ -118,7 +80,7 @@ export function buildWarpcastCompose({
   return `${base}?${params.toString()}`;
 }
 
-/* ---------- Main: SDK inside Warpcast; robust in-app fallback to web composer ---------- */
+/* ---------- Main: SDK inside Warpcast; robust fallbacks ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
@@ -130,17 +92,17 @@ export async function shareOrCast({
   const embedList = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
-    // 1) Try MiniKit/@farcaster compose via helper
+    // 1) Try MiniKit compose
     try {
       const ok = await (composeCast as unknown as (args: { text?: string; embeds?: string[] }) => Promise<boolean>)(
         { text: fullText, embeds: embedList }
       );
       if (ok) return true;
     } catch {
-      /* fall through */
+      /* continue */
     }
 
-    // 2) If SDK is present but composeCast failed, try sdk.actions.openUrl/openURL
+    // 2) If SDK present, open web composer inside the app
     try {
       const mod: any = await import("@farcaster/miniapp-sdk").catch(() => null);
       const sdk: any = mod?.sdk ?? mod?.default ?? null;
@@ -154,10 +116,10 @@ export async function shareOrCast({
         return true;
       }
     } catch {
-      /* fall through */
+      /* continue */
     }
 
-    // 3) Final in-app fallback: open web composer directly (_top breaks popup traps)
+    // 3) Final in-app fallback
     try {
       const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
       const w = window.open(href, "_top", "noopener,noreferrer");
@@ -168,7 +130,7 @@ export async function shareOrCast({
     }
   }
 
-  // Outside Warpcast: open web composer normally
+  // Outside Warpcast: open web composer
   try {
     const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
     const w = window.open(href, "_blank", "noopener,noreferrer");
