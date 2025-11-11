@@ -1,3 +1,14 @@
 {
-  "version": 2
+  "version": 2,
+  "functions": {
+    "app/api/snap/route.ts": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 15
+    },
+    "app/api/relic-card/route.ts": {
+      "runtime": "nodejs20.x",
+      "memory": 512
+    }
+  }
 }
