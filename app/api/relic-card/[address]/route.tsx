@@ -19,6 +19,12 @@ type Token = {
 const W = 1200;
 const H = 630;
 
+// ✅ typed zero address that satisfies `0x${string}`
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+
+const VALID_TIERS: Tier[] = ["Bronze", "Silver", "Gold", "Platinum", "Obsidian"];
+const isTier = (t: any): t is Tier => VALID_TIERS.includes(t);
+
 const tierColors: Record<Tier, { bg: string; rim: string; glow: string }> = {
   Bronze:   { bg: "#2b1c10", rim: "#C8AC6B", glow: "rgba(200,172,107,0.22)" },
   Silver:   { bg: "#1f242a", rim: "#D6DCE4", glow: "rgba(198,210,222,0.22)" },
@@ -89,18 +95,30 @@ function Row({ t }: { t: Token }) {
   );
 }
 
+/** Normalize API token objects to the exact Token shape */
+function normalizeToken(x: any): Token {
+  const rawAddr = String(x?.token_address || ZERO_ADDR);
+  const addr = (rawAddr.startsWith("0x") ? rawAddr : ZERO_ADDR) as `0x${string}`;
+  const t = (x?.tier ?? "Bronze") as string;
+  const tier: Tier = isTier(t) ? t : "Bronze";
+  return {
+    token_address: addr,
+    symbol: String(x?.symbol || "RELIC"),
+    days: Number(x?.days || 0) || 0,
+    no_sell_streak_days: Number(x?.no_sell_streak_days || 0) || 0,
+    never_sold: Boolean(x?.never_sold),
+    tier,
+  };
+}
+
 async function fetchRelicsAbs(origin: string, address: string): Promise<Token[]> {
-  // Call your existing API (short, cached, no auth). Must be absolute for edge.
-  const r = await fetch(`${origin}/api/relic/${address}`, {
-    cache: "no-store",
-    // Edge will not forward cookies by default; that’s what we want.
-  });
+  const r = await fetch(`${origin}/api/relic/${address}`, { cache: "no-store" });
   if (!r.ok) return [];
-  const j = await r.json().catch(() => ({ tokens: [] as Token[] }));
-  const tokens = (j?.tokens || []) as Token[];
-  // Sort by days desc, take top 3
-  return tokens
-    .sort((a: Token, b: Token) => (b.days || 0) - (a.days || 0))
+  const j = await r.json().catch(() => ({ tokens: [] as any[] }));
+  const raw: any[] = Array.isArray(j?.tokens) ? j.tokens : [];
+  return raw
+    .map(normalizeToken)
+    .sort((a, b) => (b.days || 0) - (a.days || 0))
     .slice(0, 3);
 }
 
@@ -112,14 +130,28 @@ export async function HEAD() {
   });
 }
 
-export async function GET(req: NextRequest, ctx: { params: { address: string } }) {
+export async function GET(_req: NextRequest, ctx: { params: { address: string } }) {
   const origin =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
     process.env.NEXT_PUBLIC_URL?.replace(/\/$/, "") ||
     "https://proofoftime.vercel.app";
 
   const addr = (ctx.params?.address || "").toLowerCase();
-  const items = (await fetchRelicsAbs(origin, addr)) as Token[];
+  const items = await fetchRelicsAbs(origin, addr);
+
+  const rows: Token[] =
+    items.length > 0
+      ? items
+      : [
+          {
+            token_address: ZERO_ADDR, // ✅ typed
+            symbol: "RELIC",
+            days: 0,
+            no_sell_streak_days: 0,
+            never_sold: true,
+            tier: "Bronze",
+          },
+        ];
 
   const body = (
     <div
@@ -140,16 +172,7 @@ export async function GET(req: NextRequest, ctx: { params: { address: string } }
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>
-        {(items.length ? items : [
-          {
-            token_address: "0x",
-            symbol: "RELIC",
-            days: 0,
-            no_sell_streak_days: 0,
-            never_sold: true,
-            tier: "Bronze",
-          },
-        ]).map((t, i) => (
+        {rows.map((t, i) => (
           <Row key={i} t={t} />
         ))}
       </div>
@@ -177,7 +200,6 @@ export async function GET(req: NextRequest, ctx: { params: { address: string } }
     width: W,
     height: H,
     headers: {
-      // Explicit PNG helps parsers
       "content-type": "image/png",
       "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
     },
