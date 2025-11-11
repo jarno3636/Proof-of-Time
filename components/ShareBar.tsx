@@ -72,36 +72,43 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /** Short, stable targets: human page + PNG card (server renders top 1–3 tokens). */
+  /** Human page + PNG card (PNG path is critical for Warpcast previews). */
   function buildTargets() {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
     const altarUrl = `${origin}/relic/${addr}`;
-    const imgUrl = `${origin}/api/relic-card/${addr}`; // <- no long querystrings
-    return { altarUrl, imgUrl };
+
+    // PNG-suffixed route so Warpcast treats it as an image:
+    const basePng = `${origin}/api/relic-card.png/${addr}`;
+
+    // Probe the stable URL…
+    const probeUrl = basePng;
+    // …but embed a lightly cache-busted URL to encourage fresh thumbnails.
+    const embedUrl = `${basePng}?v=${Date.now().toString().slice(-6)}`;
+
+    return { altarUrl, probeUrl, embedUrl };
   }
 
   /** Farcaster: prefer embed image; if not ready, include page URL in text when in-app. */
   const shareFC = useCallback(
     async (list: Token[]) => {
       setMsg(null);
-      const { altarUrl, imgUrl } = buildTargets();
+      const { altarUrl, probeUrl, embedUrl } = buildTargets();
       const baseText = buildText(list, 320);
 
-      const ready = await headOk(imgUrl, 1500);
+      const ready = await headOk(probeUrl, 1500);
       const inApp = isInFarcasterEnv();
       const text = inApp && !ready ? `${baseText}\n${altarUrl}` : baseText;
 
       const ok = await shareOrCast({
         text,
-        // Warpcast SDK ignores standalone `url`; embeds carry the image.
-        embeds: ready ? [imgUrl] : [],
+        embeds: ready ? [embedUrl] : [],
       });
 
       if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
       else if (!ready) setMsg("Image still warming up — shared with page link instead.");
     },
-    [address, tokens, selectedSymbols]
+    [address] // tokens/selection don't affect URLs; text is built at call-time
   );
 
   /** X/Twitter: share the human-readable page URL. */
@@ -116,7 +123,7 @@ export default function ShareBar({
       const w = window.open(href, "_top", "noopener,noreferrer"); // escape in-app browsers
       if (!w) window.location.href = href;
     },
-    [address, tokens, selectedSymbols]
+    [address]
   );
 
   const shareAllFC = useCallback(() => shareFC(tokens), [tokens, shareFC]);
