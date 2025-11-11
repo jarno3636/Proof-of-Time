@@ -86,12 +86,14 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /** Build absolute /api/relic-og image URL for 1–3 items + the human altar page. */
+  /** Build absolute /api/relic-og.png image URL for 1–3 items + the human altar page. */
   function buildShareTargets(list: Token[]) {
     const origin = siteOrigin();
     const altarUrl = `${origin}/relic/${(address || "").toLowerCase()}`;
 
-    const u = new URL("/api/relic-og", origin);
+    // IMPORTANT: use the .png alias so Warpcast recognizes it as an image.
+    const u = new URL("/api/relic-og.png", origin);
+
     const pick = list.slice(0, 3);
     if (pick.length === 1) {
       const t = pick[0];
@@ -111,8 +113,9 @@ export default function ShareBar({
         u.searchParams.append("no_sell_streak_days[]", String(t.no_sell_streak_days || 0));
       }
     }
-    // tiny cache-buster so social scrapers refetch the latest
-    u.searchParams.set("v", Date.now().toString().slice(-6));
+
+    // per-minute cache-buster: encourages preview refresh without hammering cache
+    u.searchParams.set("v", Math.floor(Date.now() / 60000).toString());
 
     return { altarUrl, embedUrl: u.toString() };
   }
