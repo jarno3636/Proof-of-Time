@@ -19,7 +19,22 @@ function siteOrigin() {
   return "";
 }
 
-/** Quick HEAD check with timeout to see if an embed URL will resolve */
+/** Warpcast / Farcaster mini detection */
+function isInFarcasterEnv(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const w = window as any;
+    const hasMini =
+      !!w.farcaster || !!w.Farcaster?.mini || !!w.Farcaster?.mini?.sdk;
+    const inIframe = window.self !== window.top;
+    const ua = typeof navigator !== "undefined" && /Warpcast|Farcaster/i.test(navigator.userAgent || "");
+    return hasMini || ua || inIframe;
+  } catch {
+    return false;
+  }
+}
+
+/** Small HEAD probe with timeout to see if the snap url will return quickly */
 async function headOk(url: string, timeoutMs = 2000): Promise<boolean> {
   try {
     const ctl = new AbortController();
@@ -27,6 +42,16 @@ async function headOk(url: string, timeoutMs = 2000): Promise<boolean> {
     const r = await fetch(url, { method: "HEAD", signal: ctl.signal });
     clearTimeout(t);
     return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Copy helper for webviews */
+async function tryCopy(s: string) {
+  try {
+    await navigator.clipboard.writeText(s);
+    return true;
   } catch {
     return false;
   }
@@ -76,10 +101,7 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /**
-   * Build a stable page path (optionally filtered to current selection)
-   * and the /api/snap URL that screenshots the live altar DOM.
-   */
+  /** Build page path (optionally filtered) and the /api/snap URL */
   const buildPaths = (useSelected: boolean) => {
     const basePage = `/relic/${address?.toLowerCase?.() ?? ""}`;
     const qs =
@@ -95,76 +117,82 @@ export default function ShareBar({
     return { pagePath, snap };
   };
 
-  /** Farcaster: include a link to the page and embed the snap image if available.
-   *  If snap is unavailable, we fall back to sharing with just the page URL (no image). */
-  const shareAllFC = useCallback(async () => {
-    try {
+  /** Core share logic for Farcaster */
+  const shareToFarcaster = useCallback(
+    async (list: Token[], useSelected: boolean) => {
       setMsg(null);
-      const text = buildText(tokens, 320);
-      const { pagePath, snap } = buildPaths(false);
       const origin = siteOrigin();
-
+      const { pagePath, snap } = buildPaths(useSelected);
       const snapUrl = origin + snap;
+
+      const baseText = buildText(list, 320);
       const canEmbed = await headOk(snapUrl);
+      const inFC = isInFarcasterEnv();
+
+      // For SDK (in Warpcast), url param is ignored. If no embed, append URL to text.
+      const text = inFC && !canEmbed ? `${baseText}\n${origin + pagePath}` : baseText;
 
       const ok = await shareOrCast({
         text,
-        url: origin + pagePath,
-        // if snap can’t be fetched, omit embeds entirely (fallback = clean link share)
+        url: inFC ? undefined : origin + pagePath, // keep url for web composer only
         embeds: canEmbed ? [snapUrl] : [],
       });
 
-      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-      if (!canEmbed) setMsg((m) => (m ? m : "Using link preview fallback (image generator busy)."));
-    } catch {
-      setMsg("Sharing failed. Please try again.");
-    }
-  }, [tokens, address, selectedSymbols]);
+      if (!ok) {
+        setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
+      } else if (!canEmbed) {
+        setMsg("Image generator not ready — shared with page link instead.");
+      }
+    },
+    [address, selectedSymbols, tokens]
+  );
 
-  const shareSelectedFC = useCallback(async () => {
+  const shareAllFC = useCallback(() => shareToFarcaster(tokens, false), [tokens, shareToFarcaster]);
+  const shareSelectedFC = useCallback(() => {
     if (!selected.length) return;
-    try {
-      setMsg(null);
-      const text = buildText(selected, 320);
-      const { pagePath, snap } = buildPaths(true);
-      const origin = siteOrigin();
+    return shareToFarcaster(selected, true);
+  }, [selected, shareToFarcaster]);
 
-      const snapUrl = origin + snap;
-      const canEmbed = await headOk(snapUrl);
-
-      const ok = await shareOrCast({
-        text,
-        url: origin + pagePath,
-        embeds: canEmbed ? [snapUrl] : [],
-      });
-
-      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
-      if (!canEmbed) setMsg((m) => (m ? m : "Using link preview fallback (image generator busy)."));
-    } catch {
-      setMsg("Sharing failed. Please try again.");
-    }
-  }, [selected, address, selectedSymbols]);
-
-  /** X/Twitter: link to the live page (X handles the preview) */
-  const openXShare = useCallback((text: string, url?: string) => {
+  /** X/Twitter share: avoid redirect loop inside Warpcast */
+  const openXShare = useCallback(async (text: string, url?: string) => {
     const base = "https://x.com/intent/tweet";
     const params = new URLSearchParams({ text });
     if (url) params.set("url", url);
     const href = `${base}?${params.toString()}`;
+
+    // Try popup first
     const w = window.open(href, "_blank", "noopener,noreferrer");
-    if (!w) window.location.href = href;
+    if (w) return;
+
+    // Popup blocked. In Farcaster webview, do NOT navigate the current page.
+    if (isInFarcasterEnv()) {
+      const copied = await tryCopy(href);
+      setMsg(
+        copied
+          ? "X composer link copied. Paste it into Safari to tweet."
+          : "Couldn’t open X composer here. Open in Safari and tweet from there."
+      );
+      return;
+    }
+
+    // Normal web fallback
+    try {
+      window.location.href = href;
+    } catch {
+      setMsg("Couldn’t open X composer.");
+    }
   }, []);
 
   const shareAllX = useCallback(() => {
     const { pagePath } = buildPaths(false);
     openXShare(buildText(tokens, 280), siteOrigin() + pagePath);
-  }, [tokens, address, selectedSymbols, openXShare]);
+  }, [tokens, openXShare]);
 
   const shareSelectedX = useCallback(() => {
     if (!selected.length) return;
     const { pagePath } = buildPaths(true);
     openXShare(buildText(selected, 280), siteOrigin() + pagePath);
-  }, [selected, address, selectedSymbols, openXShare]);
+  }, [selected, openXShare]);
 
   return (
     <div className="mt-6 space-y-2">
