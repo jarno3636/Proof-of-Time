@@ -26,7 +26,7 @@ export default function RelicAltar({
 }) {
   return (
     <section
-      data-share="altar" /* 👈 used by /api/snap to capture pixel-perfect screenshots */
+      data-share="altar" /* used by /api/snap to capture pixel-perfect screenshots */
       className={cn(
         "relative mx-auto max-w-5xl",
         "rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-6",
