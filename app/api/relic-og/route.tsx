@@ -1,4 +1,4 @@
-// app/api/relic-og/route.ts
+// app/api/relic-og/route.tsx
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
