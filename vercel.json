@@ -1,7 +1,8 @@
 {
   "functions": {
     "app/api/snap/route.ts": {
-      "runtime": "edge"
+      "memory": 1024,
+      "maxDuration": 60
     }
   }
 }
