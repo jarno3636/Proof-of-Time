@@ -15,28 +15,22 @@ function siteOrigin() {
   return "http://localhost:3000";
 }
 
-/** ONLY resolve paths we actually have in prod/dev without importing `puppeteer` */
 async function resolveExecutablePath(): Promise<string> {
-  // 1) Vercel / AWS Lambda with @sparticuz/chromium
   const execPath = await chromium.executablePath();
   if (execPath) return execPath;
-
-  // 2) Local dev: let users provide a Chrome path
   if (process.env.CHROME_EXECUTABLE_PATH) return process.env.CHROME_EXECUTABLE_PATH;
-
-  // 3) Fallback guess for local dev containers (won’t be used on Vercel)
   return "/usr/bin/google-chrome";
 }
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
 
-  const path    = url.searchParams.get("path") || "/"; // e.g. /relic/0x...
-  const selector= url.searchParams.get("selector") || '[data-share="altar"]';
-  const dpr     = Math.max(1, Math.min(3, Number(url.searchParams.get("dpr") || 2)));
-  const width   = Math.max(360, Math.min(1600, Number(url.searchParams.get("w") || 1200)));
-  const waitMs  = Math.min(20_000, Number(url.searchParams.get("wait") || 1500));
-  const target  = new URL(path, siteOrigin()).toString();
+  const path     = url.searchParams.get("path") || "/";
+  const selector = url.searchParams.get("selector") || '[data-share="altar"]';
+  const dpr      = Math.max(1, Math.min(3, Number(url.searchParams.get("dpr") || 2)));
+  const width    = Math.max(360, Math.min(1600, Number(url.searchParams.get("w") || 1200)));
+  const waitMs   = Math.min(20_000, Number(url.searchParams.get("wait") || 1500));
+  const target   = new URL(path, siteOrigin()).toString();
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 
@@ -47,21 +41,19 @@ export async function GET(req: NextRequest) {
       args: chromium.args,
       defaultViewport: { width, height: 800, deviceScaleFactor: dpr },
       executablePath,
-      headless: chromium.headless, // true on Vercel
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-
-    // Optional: keep everything loading (fonts, etc.)
     await page.goto(target, { waitUntil: "networkidle0", timeout: 40_000 });
-    await page.waitForTimeout(waitMs);
 
-    // Ensure our element exists & is visible
+    // (Fix) simple Node-side sleep instead of page.waitForTimeout
+    await new Promise((res) => setTimeout(res, waitMs));
+
     await page.waitForSelector(selector, { visible: true, timeout: 10_000 });
     const el = await page.$(selector);
     if (!el) throw new Error(`Selector not found: ${selector}`);
 
-    // Freeze animations to avoid blur
     await page.addStyleTag({
       content: `
         * { animation-play-state: paused !important; transition: none !important; }
@@ -69,17 +61,16 @@ export async function GET(req: NextRequest) {
       `,
     });
 
-    // Scroll into view, compute bounds
     await el.evaluate((node) => node.scrollIntoView({ block: "nearest", inline: "nearest" }));
     const box = await el.boundingBox();
     if (!box) throw new Error("Element not visible for screenshot");
 
-    // Expand viewport if needed
     const neededH = Math.ceil(box.y + box.height + 24);
     const vp = page.viewport();
     if (vp && neededH > vp.height) {
       await page.setViewport({ ...vp, height: Math.min(neededH, 5000) });
-      await page.waitForTimeout(50);
+      // tiny settle
+      await new Promise((res) => setTimeout(res, 50));
     }
 
     const clip = {
