@@ -22,6 +22,11 @@ async function resolveExecutablePath(): Promise<string> {
   return "/usr/bin/google-chrome";
 }
 
+// simple Node-side sleep in place of page.waitForTimeout (removed in Puppeteer v23)
+function sleep(ms: number) {
+  return new Promise<void>((res) => setTimeout(res, ms));
+}
+
 // ⚡ Fast readiness for HEAD (composer probes) and ping=1
 export async function HEAD() {
   return new NextResponse(null, {
@@ -39,7 +44,7 @@ export async function GET(req: NextRequest) {
       status: 204,
       headers: { "cache-control": "public, max-age=60" },
     });
-  }
+    }
 
   const path     = url.searchParams.get("path") || "/";
   const selector = url.searchParams.get("selector") || '[data-share="altar"]';
@@ -73,7 +78,7 @@ export async function GET(req: NextRequest) {
 
     // Don’t wait for every network call; we only need DOM + CSS
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 25_000 });
-    await page.waitForTimeout(waitMs);
+    await sleep(waitMs); // ⟵ replaced page.waitForTimeout(waitMs)
 
     await page.waitForSelector(selector, { visible: true, timeout: 6_000 });
     const el = await page.$(selector);
@@ -92,7 +97,7 @@ export async function GET(req: NextRequest) {
     const vp = page.viewport();
     if (vp && needH > vp.height) {
       await page.setViewport({ ...vp, height: Math.min(needH, 4500) });
-      await page.waitForTimeout(40);
+      await sleep(40); // ⟵ replaced page.waitForTimeout(40)
     }
 
     const clip = {
