@@ -72,63 +72,52 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  function buildTargets(list: Token[]) {
+  /** Short, stable targets: human page + PNG card (server renders top 1–3 tokens). */
+  function buildTargets() {
     const origin = siteOrigin();
-    const altarUrl = `${origin}/relic/${(address || "").toLowerCase()}`;
-
-    const u = new URL("/api/relic-og.png", origin); // <- .png path
-    const pick = list.slice(0, 3);
-    if (pick.length === 1) {
-      const t = pick[0];
-      u.searchParams.set("symbol", t.symbol);
-      u.searchParams.set("days", String(t.days));
-      u.searchParams.set("tier", (t.tier || "Bronze") as string);
-      if (t.never_sold) u.searchParams.set("never_sold", "1");
-      if (!t.never_sold) u.searchParams.set("no_sell_streak_days", String(t.no_sell_streak_days || 0));
-      u.searchParams.set("token", t.token_address);
-    } else {
-      for (const t of pick) {
-        u.searchParams.append("symbol[]", t.symbol);
-        u.searchParams.append("days[]", String(t.days));
-        u.searchParams.append("tier[]", (t.tier || "Bronze") as string);
-        u.searchParams.append("token[]", t.token_address);
-        u.searchParams.append("never_sold[]", t.never_sold ? "1" : "0");
-        u.searchParams.append("no_sell_streak_days[]", String(t.no_sell_streak_days || 0));
-      }
-    }
-    u.searchParams.set("v", Date.now().toString().slice(-6)); // tiny cache-buster
-    return { altarUrl, imgUrl: u.toString() };
+    const addr = (address || "").toLowerCase();
+    const altarUrl = `${origin}/relic/${addr}`;
+    const imgUrl = `${origin}/api/relic-card/${addr}`; // <- no long querystrings
+    return { altarUrl, imgUrl };
   }
 
-  const shareFC = useCallback(async (list: Token[]) => {
-    setMsg(null);
-    const { altarUrl, imgUrl } = buildTargets(list);
-    const baseText = buildText(list, 320);
+  /** Farcaster: prefer embed image; if not ready, include page URL in text when in-app. */
+  const shareFC = useCallback(
+    async (list: Token[]) => {
+      setMsg(null);
+      const { altarUrl, imgUrl } = buildTargets();
+      const baseText = buildText(list, 320);
 
-    const ready = await headOk(imgUrl, 1500);
-    const inApp = isInFarcasterEnv();
-    const text = inApp && !ready ? `${baseText}\n${altarUrl}` : baseText;
+      const ready = await headOk(imgUrl, 1500);
+      const inApp = isInFarcasterEnv();
+      const text = inApp && !ready ? `${baseText}\n${altarUrl}` : baseText;
 
-    const ok = await shareOrCast({
-      text,
-      // Warpcast ignores the standalone URL in SDK mode; still useful if we fall back to web composer.
-      embeds: ready ? [imgUrl] : [],
-    });
+      const ok = await shareOrCast({
+        text,
+        // Warpcast SDK ignores standalone `url`; embeds carry the image.
+        embeds: ready ? [imgUrl] : [],
+      });
 
-    if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
-    else if (!ready) setMsg("Image still warming up — shared with page link instead.");
-  }, [address, tokens, selectedSymbols]);
+      if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
+      else if (!ready) setMsg("Image still warming up — shared with page link instead.");
+    },
+    [address, tokens, selectedSymbols]
+  );
 
-  const shareX = useCallback((list: Token[]) => {
-    const { altarUrl } = buildTargets(list);
-    const text = buildText(list, 280);
-    const u = new URL("https://x.com/intent/tweet");
-    u.searchParams.set("text", text);
-    u.searchParams.set("url", altarUrl);
-    const href = u.toString();
-    const w = window.open(href, "_top", "noopener,noreferrer"); // escape in-app browsers
-    if (!w) window.location.href = href;
-  }, [address, tokens, selectedSymbols]);
+  /** X/Twitter: share the human-readable page URL. */
+  const shareX = useCallback(
+    (list: Token[]) => {
+      const { altarUrl } = buildTargets();
+      const text = buildText(list, 280);
+      const u = new URL("https://x.com/intent/tweet");
+      u.searchParams.set("text", text);
+      u.searchParams.set("url", altarUrl);
+      const href = u.toString();
+      const w = window.open(href, "_top", "noopener,noreferrer"); // escape in-app browsers
+      if (!w) window.location.href = href;
+    },
+    [address, tokens, selectedSymbols]
+  );
 
   const shareAllFC = useCallback(() => shareFC(tokens), [tokens, shareFC]);
   const shareSelectedFC = useCallback(() => selected.length && shareFC(selected), [selected, shareFC]);
