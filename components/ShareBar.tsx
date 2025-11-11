@@ -53,50 +53,70 @@ export default function ShareBar({
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
   const buildText = (list: Token[], cap?: number) => {
-    const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime ⏳"];
+    const lines = [
+      titleLine(list),
+      ...list.map(lineFor),
+      "I stood the test of time — come see how you measure up.",
+      "Time > hype. #ProofOfTime ⏳",
+    ];
     const out = lines.join("\n");
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /** Canonical human page to share (OG image comes from /share/[address]/opengraph-image.tsx) */
-  const buildTargets = useCallback(() => {
-    const origin = siteOrigin();
-    const addr = (address || "").toLowerCase();
-    const pageUrl = `${origin}/share/${addr}`;
-    // tiny cache-buster for social scrapers; harmless on X and Warpcast
-    const embedUrl = `${pageUrl}?v=${Date.now().toString().slice(-6)}`;
-    return { pageUrl, embedUrl };
-  }, [address]);
+  /**
+   * Build canonical share targets:
+   *  - pageUrl: canonical /share/ADDRESS[?selected=…]
+   *  - embedUrl: same as canonical (used for Farcaster embeds — no cache-buster)
+   *  - xUrl: canonical + tiny cache-buster (nudges X scraper only)
+   */
+  const buildTargets = useCallback(
+    (list: Token[]) => {
+      const origin = siteOrigin();
+      const addr = (address || "").toLowerCase();
 
-  /** Farcaster: just embed the page URL; Warpcast will fetch OG image from /share/[addr]. */
+      // if user selected 1–3, keep those; else share the full altar page
+      const picks =
+        list.length > 0 && list.length <= 3
+          ? Array.from(new Set(list.map((t) => t.symbol.toUpperCase()))).slice(0, 3)
+          : [];
+
+      const base = `${origin}/share/${addr}`;
+      const qs = picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : "";
+      const pageUrl = `${base}${qs}`;
+
+      // Farcaster should get the clean canonical URL as an embed
+      const embedUrl = pageUrl;
+
+      // X gets the same URL but with a tiny cache-buster
+      const xUrl = `${pageUrl}${pageUrl.includes("?") ? "&" : "?"}v=${Date.now().toString().slice(-6)}`;
+
+      return { pageUrl, embedUrl, xUrl };
+    },
+    [address]
+  );
+
+  /** Farcaster: embed the canonical URL; inside Warpcast use SDK, outside open web composer. */
   const shareFC = useCallback(
     async (list: Token[]) => {
       setMsg(null);
-      const { pageUrl, embedUrl } = buildTargets();
+      const { embedUrl } = buildTargets(list);
       const baseText = buildText(list, 320);
 
-      const inApp = isInFarcasterEnv();
-      // In-app, don’t stuff URLs into text; let embeds render the preview.
-      const text = baseText;
-
-      const ok = await shareOrCast({
-        text,
-        embeds: [embedUrl],
-      });
-
+      // In-app, do NOT add the URL to text; let the embed render the OG card
+      const ok = await shareOrCast({ text: baseText, embeds: [embedUrl] });
       if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
     },
     [buildTargets]
   );
 
-  /** X/Twitter: share the human-readable page URL; OG image is auto. */
+  /** X/Twitter: tweet with the canonical URL (plus cache-buster) and tight copy. */
   const shareX = useCallback(
     (list: Token[]) => {
-      const { pageUrl } = buildTargets();
+      const { xUrl } = buildTargets(list);
       const text = buildText(list, 280);
       const u = new URL("https://x.com/intent/tweet");
       u.searchParams.set("text", text);
-      u.searchParams.set("url", pageUrl);
+      u.searchParams.set("url", xUrl);
       const href = u.toString();
       const w = window.open(href, "_top", "noopener,noreferrer");
       if (!w) window.location.href = href;
