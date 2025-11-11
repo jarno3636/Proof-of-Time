@@ -16,8 +16,20 @@ function siteOrigin() {
   const env = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
   if (env) return env.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
-  // server render fallback (should not happen for this client component)
   return "";
+}
+
+/** Quick HEAD check with timeout to see if an embed URL will resolve */
+async function headOk(url: string, timeoutMs = 2000): Promise<boolean> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    const r = await fetch(url, { method: "HEAD", signal: ctl.signal });
+    clearTimeout(t);
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
 
 export default function ShareBar({
@@ -83,19 +95,27 @@ export default function ShareBar({
     return { pagePath, snap };
   };
 
-  /** Farcaster: include a link to the page and embed the snap image */
+  /** Farcaster: include a link to the page and embed the snap image if available.
+   *  If snap is unavailable, we fall back to sharing with just the page URL (no image). */
   const shareAllFC = useCallback(async () => {
     try {
       setMsg(null);
       const text = buildText(tokens, 320);
       const { pagePath, snap } = buildPaths(false);
       const origin = siteOrigin();
+
+      const snapUrl = origin + snap;
+      const canEmbed = await headOk(snapUrl);
+
       const ok = await shareOrCast({
         text,
         url: origin + pagePath,
-        embeds: [origin + snap],
+        // if snap can’t be fetched, omit embeds entirely (fallback = clean link share)
+        embeds: canEmbed ? [snapUrl] : [],
       });
+
       if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+      if (!canEmbed) setMsg((m) => (m ? m : "Using link preview fallback (image generator busy)."));
     } catch {
       setMsg("Sharing failed. Please try again.");
     }
@@ -108,18 +128,24 @@ export default function ShareBar({
       const text = buildText(selected, 320);
       const { pagePath, snap } = buildPaths(true);
       const origin = siteOrigin();
+
+      const snapUrl = origin + snap;
+      const canEmbed = await headOk(snapUrl);
+
       const ok = await shareOrCast({
         text,
         url: origin + pagePath,
-        embeds: [origin + snap],
+        embeds: canEmbed ? [snapUrl] : [],
       });
+
       if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+      if (!canEmbed) setMsg((m) => (m ? m : "Using link preview fallback (image generator busy)."));
     } catch {
       setMsg("Sharing failed. Please try again.");
     }
   }, [selected, address, selectedSymbols]);
 
-  /** X/Twitter: link to the live page (X will still show a preview card) */
+  /** X/Twitter: link to the live page (X handles the preview) */
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://x.com/intent/tweet";
     const params = new URLSearchParams({ text });
