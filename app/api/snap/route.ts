@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Resolve the public origin (Vercel prod/preview or local dev)
 function siteOrigin() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
   if (env) return env;
@@ -16,27 +15,37 @@ function siteOrigin() {
   return "http://localhost:3000";
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 async function resolveExecutablePath(): Promise<string> {
-  // Works on Vercel’s serverless environment
-  const execPath = await chromium.executablePath();
-  if (execPath) return execPath;
-
-  // Local dev fallback (you can override in .env.local)
+  const p = await chromium.executablePath();
+  if (p) return p;
   if (process.env.CHROME_EXECUTABLE_PATH) return process.env.CHROME_EXECUTABLE_PATH;
   return "/usr/bin/google-chrome";
+}
+
+// ⚡ Fast readiness for HEAD (composer probes) and ping=1
+export async function HEAD() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: { "cache-control": "public, max-age=60" },
+  });
 }
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
 
-  const path     = url.searchParams.get("path")     || "/";                // e.g. /relic/0xabc...
-  const selector = url.searchParams.get("selector") || '[data-share="altar"]';
-  const dpr      = Math.max(1, Math.min(3, Number(url.searchParams.get("dpr") || 2)));
-  const width    = Math.max(360, Math.min(1600, Number(url.searchParams.get("w") || 1200)));
-  const waitMs   = Math.min(20_000, Number(url.searchParams.get("wait") || 1200));
+  // If someone calls ?ping=1 we return immediately (used for pre-warm)
+  if (url.searchParams.get("ping")) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: { "cache-control": "public, max-age=60" },
+    });
+  }
 
+  const path     = url.searchParams.get("path") || "/";
+  const selector = url.searchParams.get("selector") || '[data-share="altar"]';
+  const dpr      = Math.max(1, Math.min(2, Number(url.searchParams.get("dpr") || 1.6))); // a bit lighter
+  const width    = Math.max(360, Math.min(1200, Number(url.searchParams.get("w") || 1100)));
+  const waitMs   = Math.min(8000, Number(url.searchParams.get("wait") || 600)); // smaller wait
   const target   = new URL(path, siteOrigin()).toString();
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
@@ -45,43 +54,45 @@ export async function GET(req: NextRequest) {
     const executablePath = await resolveExecutablePath();
 
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [...chromium.args, "--no-sandbox", "--disable-dev-shm-usage"],
+      defaultViewport: { width, height: 800, deviceScaleFactor: dpr },
       executablePath,
       headless: chromium.headless,
-      defaultViewport: { width, height: 800, deviceScaleFactor: dpr },
     });
 
     const page = await browser.newPage();
-    await page.goto(target, { waitUntil: "networkidle0", timeout: 40_000 });
 
-    // Let fonts/transitions settle a moment
-    await sleep(waitMs);
+    // 🚫 Block heavy/irrelevant stuff to reach “ready” faster
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const u = req.url();
+      if (/\.(?:mp4|mp3|webm|mov)$/i.test(u)) return req.abort();
+      if (/fonts\.gstatic|googletagmanager|analytics|segment|sentry|hotjar|fullstory/i.test(u)) return req.abort();
+      return req.continue();
+    });
 
-    // Ensure element exists & is visible
-    await page.waitForSelector(selector, { visible: true, timeout: 10_000 });
+    // Don’t wait for every network call; we only need DOM + CSS
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 25_000 });
+    await page.waitForTimeout(waitMs);
+
+    await page.waitForSelector(selector, { visible: true, timeout: 6_000 });
     const el = await page.$(selector);
     if (!el) throw new Error(`Selector not found: ${selector}`);
 
-    // Freeze animations so we don’t catch mid-transition frames
     await page.addStyleTag({
-      content: `
-        * { animation-play-state: paused !important; transition: none !important; }
-        video, audio { display: none !important; }
-      `,
+      content: `*{animation-play-state:paused!important;transition:none!important} video,audio{display:none!important}`,
     });
 
-    // Compute bounds, expand viewport if needed, pad a bit
-    await el.evaluate((node) => node.scrollIntoView({ block: "nearest", inline: "nearest" }));
-    let box = await el.boundingBox();
+    await el.evaluate((n) => n.scrollIntoView({ block: "nearest" }));
+    const box = await el.boundingBox();
     if (!box) throw new Error("Element not visible for screenshot");
 
-    const neededH = Math.ceil(box.y + box.height + 24);
+    // Expand viewport if required
+    const needH = Math.ceil(box.y + box.height + 24);
     const vp = page.viewport();
-    if (vp && neededH > vp.height) {
-      await page.setViewport({ ...vp, height: Math.min(neededH, 5000) });
-      await sleep(50);
-      box = await el.boundingBox(); // recompute after viewport change
-      if (!box) throw new Error("Element not visible after viewport resize");
+    if (vp && needH > vp.height) {
+      await page.setViewport({ ...vp, height: Math.min(needH, 4500) });
+      await page.waitForTimeout(40);
     }
 
     const clip = {
@@ -91,11 +102,7 @@ export async function GET(req: NextRequest) {
       height: Math.min(page.viewport()?.height ?? 2000, box.height + 16),
     };
 
-    const buf = (await page.screenshot({
-      type: "jpeg",
-      quality: 92,
-      clip,
-    })) as Buffer;
+    const buf = (await page.screenshot({ type: "jpeg", quality: 90, clip })) as Buffer;
 
     return new NextResponse(buf, {
       headers: {
