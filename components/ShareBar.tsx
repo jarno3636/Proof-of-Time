@@ -1,4 +1,3 @@
-// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
@@ -17,6 +16,7 @@ function siteOrigin() {
   const env = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
   if (env) return env.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin;
+  // server render fallback (should not happen for this client component)
   return "";
 }
 
@@ -64,15 +64,18 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /** Build the live page path (optionally with selected symbols) + screenshot URL */
+  /**
+   * Build a stable page path (optionally filtered to current selection)
+   * and the /api/snap URL that screenshots the live altar DOM.
+   */
   const buildPaths = (useSelected: boolean) => {
-    const basePage = `/relic/${address.toLowerCase()}`;
-    const selected = useSelected && selectedSymbols.length
-      ? `?selected=${encodeURIComponent(selectedSymbols.join(","))}`
-      : "";
-    const pagePath = `${basePage}${selected}`;
+    const basePage = `/relic/${address?.toLowerCase?.() ?? ""}`;
+    const qs =
+      useSelected && selectedSymbols.length
+        ? `?selected=${encodeURIComponent(selectedSymbols.join(","))}`
+        : "";
+    const pagePath = `${basePage}${qs}`;
 
-    // JPEG produced by the API (exact DOM of the altar)
     const snap = `/api/snap?path=${encodeURIComponent(pagePath)}&selector=${encodeURIComponent(
       '[data-share="altar"]'
     )}&dpr=2&w=1200&wait=1200`;
@@ -80,35 +83,43 @@ export default function ShareBar({
     return { pagePath, snap };
   };
 
-  /** Farcaster: link to page; embed the screenshot for the card */
+  /** Farcaster: include a link to the page and embed the snap image */
   const shareAllFC = useCallback(async () => {
-    setMsg(null);
-    const text = buildText(tokens, 320);
-    const { pagePath, snap } = buildPaths(false);
-    const origin = siteOrigin();
-    const ok = await shareOrCast({
-      text,
-      url: origin + pagePath,
-      embeds: [origin + snap],
-    });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    try {
+      setMsg(null);
+      const text = buildText(tokens, 320);
+      const { pagePath, snap } = buildPaths(false);
+      const origin = siteOrigin();
+      const ok = await shareOrCast({
+        text,
+        url: origin + pagePath,
+        embeds: [origin + snap],
+      });
+      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    } catch {
+      setMsg("Sharing failed. Please try again.");
+    }
   }, [tokens, address, selectedSymbols]);
 
   const shareSelectedFC = useCallback(async () => {
     if (!selected.length) return;
-    setMsg(null);
-    const text = buildText(selected, 320);
-    const { pagePath, snap } = buildPaths(true);
-    const origin = siteOrigin();
-    const ok = await shareOrCast({
-      text,
-      url: origin + pagePath,
-      embeds: [origin + snap],
-    });
-    if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    try {
+      setMsg(null);
+      const text = buildText(selected, 320);
+      const { pagePath, snap } = buildPaths(true);
+      const origin = siteOrigin();
+      const ok = await shareOrCast({
+        text,
+        url: origin + pagePath,
+        embeds: [origin + snap],
+      });
+      if (!ok) setMsg("Could not open Farcaster composer in-app. Try updating Warpcast.");
+    } catch {
+      setMsg("Sharing failed. Please try again.");
+    }
   }, [selected, address, selectedSymbols]);
 
-  /** X/Twitter: just link to the live page */
+  /** X/Twitter: link to the live page (X will still show a preview card) */
   const openXShare = useCallback((text: string, url?: string) => {
     const base = "https://x.com/intent/tweet";
     const params = new URLSearchParams({ text });
