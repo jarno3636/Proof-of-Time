@@ -1,4 +1,3 @@
-// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
@@ -73,7 +72,7 @@ export default function ShareBar({
   };
 
   /** Human page + PNG card (PNG path is critical for Warpcast previews). */
-  function buildTargets() {
+  const buildTargets = useCallback(() => {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
     const altarUrl = `${origin}/relic/${addr}`;
@@ -87,7 +86,7 @@ export default function ShareBar({
     const embedUrl = `${basePng}?v=${Date.now().toString().slice(-6)}`;
 
     return { altarUrl, probeUrl, embedUrl };
-  }
+  }, [address]);
 
   /** Farcaster: prefer embed image; if not ready, include page URL in text when in-app. */
   const shareFC = useCallback(
@@ -108,7 +107,7 @@ export default function ShareBar({
       if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
       else if (!ready) setMsg("Image still warming up — shared with page link instead.");
     },
-    [address] // tokens/selection don't affect URLs; text is built at call-time
+    [buildTargets]
   );
 
   /** X/Twitter: share the human-readable page URL. */
@@ -120,23 +119,20 @@ export default function ShareBar({
       u.searchParams.set("text", text);
       u.searchParams.set("url", altarUrl);
       const href = u.toString();
-      const w = window.open(href, "_top", "noopener,noreferrer"); // escape in-app browsers
+      const w = window.open(href, "_top", "noopener,noreferrer");
       if (!w) window.location.href = href;
     },
-    [address]
+    [buildTargets]
   );
-
-  const shareAllFC = useCallback(() => shareFC(tokens), [tokens, shareFC]);
-  const shareSelectedFC = useCallback(() => selected.length && shareFC(selected), [selected, shareFC]);
 
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={shareAllFC} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
+        <button onClick={() => shareFC(tokens)} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
           Share Altar (Farcaster)
         </button>
         <button
-          onClick={shareSelectedFC}
+          onClick={() => selected.length && shareFC(selected)}
           disabled={!selected.length}
           className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
         >
