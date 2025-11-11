@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
+import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
 import ShareBar from "@/components/ShareBar";
@@ -24,9 +25,20 @@ async function getRelics(address: string) {
 
 export default function Page({ params }: { params: { address: string } }) {
   const { address: connected } = useAccount();
+  const searchParams = useSearchParams();
 
-  // ✅ normalize param once
+  // normalize once
   const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
+
+  // parse ?selected=SYM1,SYM2 (uppercased for matching)
+  const selectedFromQS = useMemo(() => {
+    const raw = searchParams?.get("selected") || "";
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.toUpperCase());
+  }, [searchParams]);
 
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
@@ -38,17 +50,26 @@ export default function Page({ params }: { params: { address: string } }) {
     setLoading(true);
     setError(null);
     try {
-      const j = await getRelics(targetAddr); // already lowercase
-      setTokens(j.tokens || []);
-      setSelected((prev) =>
-        prev.filter((sym) => (j.tokens || []).some((t) => t.symbol === sym))
-      );
+      const j = await getRelics(targetAddr);
+      const toks = j.tokens || [];
+      setTokens(toks);
+
+      // initialize selection from QS (only on data refresh; keep existing picks valid)
+      if (selectedFromQS.length) {
+        const initial = toks
+          .filter((t) => selectedFromQS.includes(t.symbol.toUpperCase()))
+          .map((t) => t.symbol);
+        setSelected(initial);
+      } else {
+        // prune removed symbols
+        setSelected((prev) => prev.filter((sym) => toks.some((t) => t.symbol === sym)));
+      }
     } catch (e: any) {
       setError(e?.message || "Unknown relic fetch error");
     } finally {
       setLoading(false);
     }
-  }, [targetAddr]);
+  }, [targetAddr, selectedFromQS]);
 
   useEffect(() => {
     load();
@@ -61,7 +82,6 @@ export default function Page({ params }: { params: { address: string } }) {
       const r = await fetch("/api/compute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ✅ send lowercase into compute as well
         body: JSON.stringify({ address: targetAddr }),
       });
       const j = await r.json().catch(() => ({}));
@@ -75,9 +95,7 @@ export default function Page({ params }: { params: { address: string } }) {
   }, [targetAddr, load]);
 
   const toggleSelect = useCallback((symbol: string) => {
-    setSelected((cur) =>
-      cur.includes(symbol) ? cur.filter((s) => s !== symbol) : [...cur, symbol]
-    );
+    setSelected((cur) => (cur.includes(symbol) ? cur.filter((s) => s !== symbol) : [...cur, symbol]));
   }, []);
 
   const isOwnerView =
@@ -88,7 +106,6 @@ export default function Page({ params }: { params: { address: string } }) {
   return (
     <>
       <Nav />
-
       <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
         {/* Header: title + CTA */}
         <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
@@ -104,11 +121,7 @@ export default function Page({ params }: { params: { address: string } }) {
               onClick={onCompute}
               className="rounded-2xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-3 text-sm sm:text-base text-[#0b0e14] shadow-lg transition"
               disabled={computing}
-              title={
-                isOwnerView
-                  ? "Recalculate from chain & DB"
-                  : "Recalculate (anyone can trigger)"
-              }
+              title={isOwnerView ? "Recalculate from chain & DB" : "Recalculate (anyone can trigger)"}
             >
               {computing ? "Verifying…" : "Verify your will to hold"}
             </button>
@@ -138,15 +151,12 @@ export default function Page({ params }: { params: { address: string } }) {
             <SkeletonCard />
           </div>
         ) : tokens.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mt-6 rounded-2xl border border-white/10 bg_white/5 p-6">
             <p className="opacity-80">
-              No relics yet. Tap{" "}
-              <span className="font-semibold">“Verify your will to hold”</span>{" "}
-              to compute. It will refresh your altar automatically.
+              No relics yet. Tap <span className="font-semibold">“Verify your will to hold”</span> to compute. It will refresh your altar automatically.
             </p>
             <p className="opacity-60 text-sm mt-2">
-              Note: LP positions and some programmatic movements can complicate
-              “time held”.
+              Note: LP positions and some programmatic movements can complicate “time held”.
             </p>
           </div>
         ) : (
@@ -167,15 +177,10 @@ export default function Page({ params }: { params: { address: string } }) {
               />
             </div>
 
-            <ShareBar
-              address={targetAddr}
-              tokens={tokens}
-              selectedSymbols={selected}
-            />
+            <ShareBar address={targetAddr} tokens={tokens} selectedSymbols={selected} />
 
             <p className="opacity-60 text-xs mt-6">
-              Heads up: LP activity and wrapping/unwrapping patterns may affect
-              continuous hold time.
+              Heads up: LP activity and wrapping/unwrapping patterns may affect continuous hold time.
             </p>
           </>
         )}
