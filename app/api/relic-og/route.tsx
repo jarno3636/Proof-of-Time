@@ -26,12 +26,12 @@ const tierColors: Record<Tier, { bg: string; rim: string; glow: string }> = {
 };
 
 function esc(s?: string) {
-  return (s || "").replace(/[<>&]/g, (m) => ({ "<":"&lt;","&":"&amp;",">":"&gt;" }[m]!));
+  return (s || "").replace(/[<>&]/g, (m) => ({ "<": "&lt;", "&": "&amp;", ">": "&gt;" }[m]!));
 }
 function short(addr?: string) {
   if (!addr) return "";
   const a = String(addr);
-  return a.length > 10 ? `${a.slice(0,6)}…${a.slice(-4)}` : a;
+  return a.length > 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
 function parseItems(req: NextRequest): Item[] {
@@ -53,21 +53,23 @@ function parseItems(req: NextRequest): Item[] {
         no_sell_streak_days: Number(nosell[i] ?? 0) || 0,
         token: token[i],
       }))
-    : [{
-        symbol: sp.get("symbol") || "RELIC",
-        days: Number(sp.get("days") || 0) || 0,
-        tier: (sp.get("tier") as Tier) || "Bronze",
-        never_sold: /^(1|true|yes)$/i.test(sp.get("never_sold") || ""),
-        no_sell_streak_days: Number(sp.get("no_sell_streak_days") || 0) || 0,
-        token: sp.get("token") || "",
-      }];
+    : [
+        {
+          symbol: sp.get("symbol") || "RELIC",
+          days: Number(sp.get("days") || 0) || 0,
+          tier: (sp.get("tier") as Tier) || "Bronze",
+          never_sold: /^(1|true|yes)$/i.test(sp.get("never_sold") || ""),
+          no_sell_streak_days: Number(sp.get("no_sell_streak_days") || 0) || 0,
+          token: sp.get("token") || "",
+        },
+      ];
 
   return list.slice(0, 3);
 }
 
 function Row({ it }: { it: Item }) {
   const c = tierColors[it.tier];
-  const badge = it.never_sold ? "Never sold" : `No-sell ${Math.max(0, it.no_sell_streak_days||0)}d`;
+  const badge = it.never_sold ? "Never sold" : `No-sell ${Math.max(0, it.no_sell_streak_days || 0)}d`;
 
   return (
     <div
@@ -92,35 +94,34 @@ function Row({ it }: { it: Item }) {
 
       {/* text */}
       <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-        <div style={{ color: "#d8d6cf", fontSize: 18, letterSpacing: 2 }}>
-          {esc(it.tier)} Relic
-        </div>
-        <div style={{ color: "#f6f1e6", fontSize: 44, fontWeight: 800, fontFamily: "serif" }}>
-          ${esc(it.symbol)}
-        </div>
+        <div style={{ color: "#d8d6cf", fontSize: 18, letterSpacing: 2 }}>{esc(it.tier)} Relic</div>
+        <div style={{ color: "#f6f1e6", fontSize: 44, fontWeight: 800, fontFamily: "serif" }}>${esc(it.symbol)}</div>
         {it.token ? (
           <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 16, fontFamily: "monospace" }}>
             {esc(short(it.token))}
           </div>
         ) : null}
-        <div style={{
-          marginTop: 10, display: "inline-flex", alignItems: "center",
-          gap: 8, padding: "6px 10px", borderRadius: 12,
-          background: it.never_sold ? "rgba(16,120,80,0.18)" : "rgba(60,140,210,0.18)",
-          border: `1px solid ${it.never_sold ? "rgba(80,225,160,0.35)" : "rgba(120,190,255,0.35)"}`,
-          color: it.never_sold ? "#b8f8d2" : "#d6ecff", fontSize: 14
-        }}>
+        <div
+          style={{
+            marginTop: 10,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 10px",
+            borderRadius: 12,
+            background: it.never_sold ? "rgba(16,120,80,0.18)" : "rgba(60,140,210,0.18)",
+            border: `1px solid ${it.never_sold ? "rgba(80,225,160,0.35)" : "rgba(120,190,255,0.35)"}`,
+            color: it.never_sold ? "#b8f8d2" : "#d6ecff",
+            fontSize: 14,
+          }}
+        >
           {badge}
         </div>
       </div>
 
       <div style={{ textAlign: "right" }}>
-        <div style={{ color: "#fff", fontSize: 70, fontWeight: 800, lineHeight: 0.9 }}>
-          {Math.max(0, it.days || 0)}
-        </div>
-        <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 22, marginTop: 4 }}>
-          days held
-        </div>
+        <div style={{ color: "#fff", fontSize: 70, fontWeight: 800, lineHeight: 0.9 }}>{Math.max(0, it.days || 0)}</div>
+        <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 22, marginTop: 4 }}>days held</div>
       </div>
     </div>
   );
@@ -132,35 +133,45 @@ export async function GET(req: NextRequest) {
   const body = (
     <div
       style={{
-        width: W, height: H, display: "flex", flexDirection: "column",
-        background: "linear-gradient(135deg,#0b0e14,#141a22)", color: "#fff",
-        padding: 0, position: "relative"
+        width: W,
+        height: H,
+        display: "flex",
+        flexDirection: "column",
+        background: "linear-gradient(135deg,#0b0e14,#141a22)",
+        color: "#fff",
+        padding: 0,
+        position: "relative",
       }}
     >
       {/* header */}
       <div style={{ padding: "56px 48px 0 48px" }}>
-        <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>
-          Proof of Time
-        </div>
-        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>
-          Relics forged by patience
-        </div>
+        <div style={{ fontSize: 40, fontWeight: 800, color: "#f2e9d0", fontFamily: "serif" }}>Proof of Time</div>
+        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.78)", fontSize: 16 }}>Relics forged by patience</div>
       </div>
 
       {/* rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 48px 0 48px" }}>
-        {items.map((it, i) => (<Row key={i} it={it} />))}
+        {items.map((it, i) => (
+          <Row key={i} it={it} />
+        ))}
       </div>
 
       {/* footer */}
-      <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: 56,
-        background: "rgba(255,255,255,0.03)", display: "flex",
-        alignItems: "center", justifyContent: "flex-end", paddingRight: 56
-      }}>
-        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>
-          Time &gt; hype • #ProofOfTime
-        </div>
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 56,
+          background: "rgba(255,255,255,0.03)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          paddingRight: 56,
+        }}
+      >
+        <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 18 }}>Time &gt; hype • #ProofOfTime</div>
       </div>
     </div>
   );
@@ -170,6 +181,8 @@ export async function GET(req: NextRequest) {
     height: H,
     headers: {
       "cache-control": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400",
+      // PNG is default; this header is optional as next/og sets it.
+      // "content-type": "image/png",
     },
   });
 }
