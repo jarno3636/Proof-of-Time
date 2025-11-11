@@ -1,4 +1,3 @@
-// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
@@ -9,7 +8,7 @@ import AppReady from "@/components/AppReady";
 /* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (env) return env;
+  if (env) return env.replace(/\/$/, "");
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel}`;
   return "http://localhost:3000";
@@ -30,7 +29,7 @@ export const viewport: Viewport = {
   themeColor: "#0b0e14",
 };
 
-/* ---------- Metadata ---------- */
+/* ---------- Metadata (sets absolute base for all OG/Twitter images) ---------- */
 export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: { default: "Proof of Time", template: "%s · Proof of Time" },
@@ -83,30 +82,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `
 (function(){
   if (window.__fcReadyInjected) return; window.__fcReadyInjected = true;
-
-  var attempts = 0, maxAttempts = 40;
-  var done = false;
-
+  var attempts = 0, maxAttempts = 40; var done = false;
   function signalReadyOnce(){
     if (done) return;
     try { window.farcaster?.actions?.ready?.(); } catch(e) {}
     try { window.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch(e) {}
     try { window.Farcaster?.mini?.sdk?.actions?.ready?.(); } catch(e) {}
-    attempts++;
-    if (attempts >= maxAttempts) stop();
+    attempts++; if (attempts >= maxAttempts) stop();
   }
-
   function stop(){ done = true; try{ clearInterval(iv); }catch(_){} 
     window.removeEventListener('visibilitychange', onVis);
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('pageshow', onPageShow);
     document.removeEventListener('DOMContentLoaded', signalReadyOnce, { once: true });
   }
-
   function onVis(){ if (!document.hidden) signalReadyOnce(); }
   function onFocus(){ signalReadyOnce(); }
   function onPageShow(){ signalReadyOnce(); }
-
   signalReadyOnce();
   document.addEventListener('DOMContentLoaded', signalReadyOnce, { once: true });
   var iv = setInterval(signalReadyOnce, 150);
