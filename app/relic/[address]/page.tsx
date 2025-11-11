@@ -6,8 +6,6 @@ import { useAccount } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
-// (You can remove ShareBar import if you no longer want inline casting)
-// import ShareBar from "@/components/ShareBar";
 
 type ApiToken = {
   token_address: `0x${string}`;
@@ -16,7 +14,6 @@ type ApiToken = {
   no_sell_streak_days: number;
   never_sold: boolean;
   tier: "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian";
-  balance?: number;
 };
 
 async function getRelics(address: string) {
@@ -62,7 +59,6 @@ export default function Page({ params }: { params: { address: string } }) {
           .map((t) => t.symbol);
         setSelected(initial);
       } else {
-        // prune removed symbols
         setSelected((prev) => prev.filter((sym) => toks.some((t) => t.symbol === sym)));
       }
     } catch (e: any) {
@@ -72,9 +68,7 @@ export default function Page({ params }: { params: { address: string } }) {
     }
   }, [targetAddr, selectedFromQS]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const onCompute = useCallback(async () => {
     setComputing(true);
@@ -100,34 +94,27 @@ export default function Page({ params }: { params: { address: string } }) {
   }, []);
 
   const isOwnerView =
-    connected &&
-    typeof connected === "string" &&
-    connected.toLowerCase() === targetAddr;
+    connected && typeof connected === "string" && connected.toLowerCase() === targetAddr;
 
-  // ---------- Share targets (page-based) ----------
+  // Share targets (page-based)
   const baseShareHref = useMemo(() => `/share/${targetAddr}`, [targetAddr]);
-
   const shareSelectedHref = useMemo(() => {
     if (!selected.length) return baseShareHref;
     const list = selected.join(",");
     const u = new URL(baseShareHref, typeof window !== "undefined" ? window.location.origin : "https://proofoftime.vercel.app");
     u.searchParams.set("selected", list);
-    return u.pathname + u.search + u.hash; // return relative
+    return u.pathname + u.search + u.hash; // relative
   }, [baseShareHref, selected]);
 
   return (
     <>
       <Nav />
       <main className="mx-auto max-w-5xl px-4 py-10 text-[#EDEEF2]">
-        {/* Header: title + CTA */}
         <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-              Your Relic Altar
-            </h1>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">Your Relic Altar</h1>
             <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
           </div>
-
           <div className="justify-self-start md:justify-self-end text-right">
             <button
               onClick={onCompute}
@@ -137,9 +124,7 @@ export default function Page({ params }: { params: { address: string } }) {
             >
               {computing ? "Verifying…" : "Verify your will to hold"}
             </button>
-            <div className="mt-1 text-[11px] italic text-zinc-400">
-              * Recomputes and refreshes your altar
-            </div>
+            <div className="mt-1 text-[11px] italic text-zinc-400">* Recomputes and refreshes your altar</div>
           </div>
         </header>
 
@@ -158,18 +143,14 @@ export default function Page({ params }: { params: { address: string } }) {
 
         {loading ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : tokens.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-white/10 bg_white/5 p-6">
             <p className="opacity-80">
               No relics yet. Tap <span className="font-semibold">“Verify your will to hold”</span> to compute. It will refresh your altar automatically.
             </p>
-            <p className="opacity-60 text-sm mt-2">
-              Note: LP positions and some programmatic movements can complicate “time held”.
-            </p>
+            <p className="opacity-60 text-sm mt-2">Note: LP positions and some programmatic movements can complicate “time held”.</p>
           </div>
         ) : (
           <>
@@ -189,34 +170,25 @@ export default function Page({ params }: { params: { address: string } }) {
               />
             </div>
 
-            {/* ---------- Share row (page-based) ---------- */}
+            {/* Share buttons -> routes to share page */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
               <Link
                 href={shareSelectedHref}
                 className={`rounded-2xl px-4 py-3 text-sm sm:text-base transition ${
-                  selected.length
-                    ? "bg-white/10 hover:bg-white/20"
-                    : "bg-white/5 text-white/50 pointer-events-none"
+                  selected.length ? "bg-white/10 hover:bg-white/20" : "bg-white/5 text-white/50 pointer-events-none"
                 }`}
                 aria-disabled={!selected.length}
               >
                 Share Selected
               </Link>
-
               <Link
                 href={baseShareHref}
                 className="rounded-2xl px-4 py-3 text-sm sm:text-base bg-white/10 hover:bg-white/20 transition"
               >
                 Share Altar
               </Link>
-
-              <div className="text-xs text-zinc-400 ml-2">
-                Opens a share page with a preview and quick buttons for Farcaster / X
-              </div>
+              <div className="text-xs text-zinc-400 ml-2">Opens a share page with preview + quick Farcaster/X</div>
             </div>
-
-            {/* If you still want inline share buttons, keep this: */}
-            {/* <ShareBar address={targetAddr} tokens={tokens} selectedSymbols={selected} /> */}
 
             <p className="opacity-60 text-xs mt-6">
               Heads up: LP activity and wrapping/unwrapping patterns may affect continuous hold time.
