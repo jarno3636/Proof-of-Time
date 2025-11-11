@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
-import ShareBar from "@/components/ShareBar";
+// (You can remove ShareBar import if you no longer want inline casting)
+// import ShareBar from "@/components/ShareBar";
 
 type ApiToken = {
   token_address: `0x${string}`;
@@ -27,7 +29,6 @@ export default function Page({ params }: { params: { address: string } }) {
   const { address: connected } = useAccount();
   const searchParams = useSearchParams();
 
-  // normalize once
   const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
 
   // parse ?selected=SYM1,SYM2 (uppercased for matching)
@@ -54,7 +55,7 @@ export default function Page({ params }: { params: { address: string } }) {
       const toks = j.tokens || [];
       setTokens(toks);
 
-      // initialize selection from QS (only on data refresh; keep existing picks valid)
+      // initialize selection from QS
       if (selectedFromQS.length) {
         const initial = toks
           .filter((t) => selectedFromQS.includes(t.symbol.toUpperCase()))
@@ -102,6 +103,17 @@ export default function Page({ params }: { params: { address: string } }) {
     connected &&
     typeof connected === "string" &&
     connected.toLowerCase() === targetAddr;
+
+  // ---------- Share targets (page-based) ----------
+  const baseShareHref = useMemo(() => `/share/${targetAddr}`, [targetAddr]);
+
+  const shareSelectedHref = useMemo(() => {
+    if (!selected.length) return baseShareHref;
+    const list = selected.join(",");
+    const u = new URL(baseShareHref, typeof window !== "undefined" ? window.location.origin : "https://proofoftime.vercel.app");
+    u.searchParams.set("selected", list);
+    return u.pathname + u.search + u.hash; // return relative
+  }, [baseShareHref, selected]);
 
   return (
     <>
@@ -177,7 +189,34 @@ export default function Page({ params }: { params: { address: string } }) {
               />
             </div>
 
-            <ShareBar address={targetAddr} tokens={tokens} selectedSymbols={selected} />
+            {/* ---------- Share row (page-based) ---------- */}
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <Link
+                href={shareSelectedHref}
+                className={`rounded-2xl px-4 py-3 text-sm sm:text-base transition ${
+                  selected.length
+                    ? "bg-white/10 hover:bg-white/20"
+                    : "bg-white/5 text-white/50 pointer-events-none"
+                }`}
+                aria-disabled={!selected.length}
+              >
+                Share Selected
+              </Link>
+
+              <Link
+                href={baseShareHref}
+                className="rounded-2xl px-4 py-3 text-sm sm:text-base bg-white/10 hover:bg-white/20 transition"
+              >
+                Share Altar
+              </Link>
+
+              <div className="text-xs text-zinc-400 ml-2">
+                Opens a share page with a preview and quick buttons for Farcaster / X
+              </div>
+            </div>
+
+            {/* If you still want inline share buttons, keep this: */}
+            {/* <ShareBar address={targetAddr} tokens={tokens} selectedSymbols={selected} /> */}
 
             <p className="opacity-60 text-xs mt-6">
               Heads up: LP activity and wrapping/unwrapping patterns may affect continuous hold time.
