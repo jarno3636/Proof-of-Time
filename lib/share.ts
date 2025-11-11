@@ -1,3 +1,4 @@
+// lib/share.ts
 import { composeCast } from "./miniapp";
 
 /* ---------- Config ---------- */
@@ -101,15 +102,11 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
 
 /* ---------- Warpcast web composer URL (do NOT inject URL into text) ---------- */
 export function buildWarpcastCompose({
-  url = "",
   text = "",
   embeds = [],
-  forceMini = false,
 }: {
-  url?: string;
   text?: string;
   embeds?: string[];
-  forceMini?: boolean;
 }) {
   const wcText = (text || "").trim();
   const embedList = normEmbeds(embeds);
@@ -118,46 +115,68 @@ export function buildWarpcastCompose({
   const params = new URLSearchParams();
   if (wcText) params.set("text", wcText);
   for (const e of embedList) params.append("embeds[]", e);
-  // If you ever want to include your mini link as a second embed:
-  // if (forceMini && process.env.NEXT_PUBLIC_FC_MINIAPP_URL) {
-  //   params.append("embeds[]", process.env.NEXT_PUBLIC_FC_MINIAPP_URL);
-  // }
   return `${base}?${params.toString()}`;
 }
 
-/* ---------- Main: SDK inside Warpcast; web composer elsewhere ---------- */
+/* ---------- Main: SDK inside Warpcast; robust in-app fallback to web composer ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
-  url = "",
-  forceMini = false,
 }: {
   text?: string;
   embeds?: string[];
-  url?: string;       // kept for future use; NOT injected into text
-  forceMini?: boolean;
 }) {
   const fullText = (text || "").trim();
   const embedList = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
-    // Inside Warpcast: use SDK only; text must already include any fallback URL
-    const typedComposeCast = composeCast as unknown as (args: {
-      text?: string;
-      embeds?: string[];
-    }) => Promise<boolean>;
-    const ok = await typedComposeCast({ text: fullText, embeds: embedList });
-    return !!ok;
+    // 1) Try MiniKit/@farcaster compose via helper
+    try {
+      const ok = await (composeCast as unknown as (args: { text?: string; embeds?: string[] }) => Promise<boolean>)(
+        { text: fullText, embeds: embedList }
+      );
+      if (ok) return true;
+    } catch {
+      /* fall through */
+    }
+
+    // 2) If SDK is present but composeCast failed, try sdk.actions.openUrl/openURL
+    try {
+      const mod: any = await import("@farcaster/miniapp-sdk").catch(() => null);
+      const sdk: any = mod?.sdk ?? mod?.default ?? null;
+      if (sdk?.actions?.openUrl || sdk?.actions?.openURL) {
+        const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
+        try {
+          await Promise.resolve(sdk.actions.openUrl?.(href));
+        } catch {
+          await Promise.resolve(sdk.actions.openURL?.(href));
+        }
+        return true;
+      }
+    } catch {
+      /* fall through */
+    }
+
+    // 3) Final in-app fallback: open web composer directly (_top breaks popup traps)
+    try {
+      const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
+      const w = window.open(href, "_top", "noopener,noreferrer");
+      if (!w) window.location.href = href;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  // Outside Warpcast: open web composer
-  const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList, forceMini });
+  // Outside Warpcast: open web composer normally
   try {
+    const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
     return true;
   } catch {
     try {
+      const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
       window.location.href = href;
       return true;
     } catch {
