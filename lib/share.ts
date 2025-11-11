@@ -5,7 +5,7 @@ const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
   "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
 
-/* ---------- URL + env helpers (local) ---------- */
+/* ---------- URL + env helpers ---------- */
 function siteOrigin(): string {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (env) return env.replace(/\/$/, "");
@@ -72,7 +72,7 @@ function normEmbeds(embeds?: string | string[]): string[] {
   return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
 }
 
-/* ---------- Prefer mini link in Warpcast (path rewrite), not for text ---------- */
+/* ---------- Prefer mini link in Warpcast (path rewrite), not injected into text ---------- */
 export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = {}) {
   const canonical = safeUrl(webUrl);
   if (!canonical) return "";
@@ -81,8 +81,7 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   if (/^https:\/\/warpcast\.com\/~\/compose/i.test(canonical)) return canonical;
 
   const inWarpcast = isInFarcasterEnv() || forceMini;
-  const MINI_BASE =
-    process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
+  const MINI_BASE = process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
 
   if (!MINI_BASE || !inWarpcast) return canonical;
   if (!isSameOrigin(canonical, siteOrigin())) return canonical;
@@ -100,32 +99,33 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   }
 }
 
-/* ---------- Warpcast web composer URL (DO NOT add URL to text) ---------- */
+/* ---------- Warpcast web composer URL (do NOT inject URL into text) ---------- */
 export function buildWarpcastCompose({
   url = "",
   text = "",
   embeds = [],
   forceMini = false,
 }: {
-  url?: string;      // may be used for future logic; not injected into text
+  url?: string;
   text?: string;
-  embeds?: string[]; // normalized to string[]
+  embeds?: string[];
   forceMini?: boolean;
 }) {
-  // Keep text as-is; don't append the URL
   const wcText = (text || "").trim();
-
-  // We still normalize embeds (one of them can be your miniapp link)
   const embedList = normEmbeds(embeds);
 
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
   if (wcText) params.set("text", wcText);
   for (const e of embedList) params.append("embeds[]", e);
+  // If you ever want to include your mini link as a second embed:
+  // if (forceMini && process.env.NEXT_PUBLIC_FC_MINIAPP_URL) {
+  //   params.append("embeds[]", process.env.NEXT_PUBLIC_FC_MINIAPP_URL);
+  // }
   return `${base}?${params.toString()}`;
 }
 
-/* ---------- Main: try SDK compose (in Warpcast), else open web composer (web/dapp) ---------- */
+/* ---------- Main: SDK inside Warpcast; web composer elsewhere ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
@@ -134,25 +134,23 @@ export async function shareOrCast({
 }: {
   text?: string;
   embeds?: string[];
-  url?: string;
+  url?: string;       // kept for future use; NOT injected into text
   forceMini?: boolean;
 }) {
-  // NEVER add URL into Farcaster text
   const fullText = (text || "").trim();
   const embedList = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
-    // IN WARPCAST: SDK only
+    // Inside Warpcast: use SDK only; text must already include any fallback URL
     const typedComposeCast = composeCast as unknown as (args: {
       text?: string;
       embeds?: string[];
     }) => Promise<boolean>;
-
     const ok = await typedComposeCast({ text: fullText, embeds: embedList });
     return !!ok;
   }
 
-  // OUTSIDE WARPCAST: open web composer; text has no URL; embeds carry the link
+  // Outside Warpcast: open web composer
   const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList, forceMini });
   try {
     const w = window.open(href, "_blank", "noopener,noreferrer");
