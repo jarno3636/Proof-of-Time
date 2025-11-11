@@ -1,9 +1,6 @@
+// app/share/[address]/layout.tsx
 export const dynamic = "force-dynamic";
 
-/**
- * Add explicit OG/Twitter metadata pointing to our opengraph-image.
- * Farcaster & Twitter will fetch this image when the share page URL is embedded.
- */
 export async function generateMetadata({ params, searchParams }: any) {
   const origin =
     (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_URL || "").replace(/\/$/, "") ||
@@ -18,7 +15,7 @@ export async function generateMetadata({ params, searchParams }: any) {
     : `Relics for ${addr.slice(0, 6)}…${addr.slice(-4)}`;
   const description = "Time > hype. #ProofOfTime";
 
-  // Build absolute OG image URL so crawlers fetch it from edge
+  // Absolute OG image URL (so crawlers fetch from edge)
   const ogUrl = new URL(`${origin}/share/${addr}/opengraph-image`);
   if (selTxt) ogUrl.searchParams.set("selected", selTxt);
 
@@ -38,4 +35,14 @@ export async function generateMetadata({ params, searchParams }: any) {
       images: [ogUrl.toString()],
     },
   };
+}
+
+/** ✅ Required default layout component */
+export default function ShareAddressLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // No extra wrappers needed—just pass through
+  return <>{children}</>;
 }
