@@ -19,19 +19,6 @@ function siteOrigin() {
   return "https://proofoftime.vercel.app";
 }
 
-/** HEAD probe so we only attach images that are actually live. */
-async function headOk(url: string, timeoutMs = 1500): Promise<boolean> {
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), timeoutMs);
-    const r = await fetch(url, { method: "HEAD", signal: ctl.signal, cache: "no-store" });
-    clearTimeout(t);
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
 export default function ShareBar({
   address,
   tokens,
@@ -71,53 +58,45 @@ export default function ShareBar({
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /** Human page + PNG card (PNG path is critical for Warpcast previews). */
+  /** Canonical human page to share (OG image comes from /share/[address]/opengraph-image.tsx) */
   const buildTargets = useCallback(() => {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
-    const altarUrl = `${origin}/relic/${addr}`;
-
-    // PNG-suffixed route so Warpcast treats it as an image:
-    const basePng = `${origin}/api/relic-card.png/${addr}`;
-
-    // Probe the stable URL…
-    const probeUrl = basePng;
-    // …but embed a lightly cache-busted URL to encourage fresh thumbnails.
-    const embedUrl = `${basePng}?v=${Date.now().toString().slice(-6)}`;
-
-    return { altarUrl, probeUrl, embedUrl };
+    const pageUrl = `${origin}/share/${addr}`;
+    // tiny cache-buster for social scrapers; harmless on X and Warpcast
+    const embedUrl = `${pageUrl}?v=${Date.now().toString().slice(-6)}`;
+    return { pageUrl, embedUrl };
   }, [address]);
 
-  /** Farcaster: prefer embed image; if not ready, include page URL in text when in-app. */
+  /** Farcaster: just embed the page URL; Warpcast will fetch OG image from /share/[addr]. */
   const shareFC = useCallback(
     async (list: Token[]) => {
       setMsg(null);
-      const { altarUrl, probeUrl, embedUrl } = buildTargets();
+      const { pageUrl, embedUrl } = buildTargets();
       const baseText = buildText(list, 320);
 
-      const ready = await headOk(probeUrl, 1500);
       const inApp = isInFarcasterEnv();
-      const text = inApp && !ready ? `${baseText}\n${altarUrl}` : baseText;
+      // In-app, don’t stuff URLs into text; let embeds render the preview.
+      const text = baseText;
 
       const ok = await shareOrCast({
         text,
-        embeds: ready ? [embedUrl] : [],
+        embeds: [embedUrl],
       });
 
       if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
-      else if (!ready) setMsg("Image still warming up — shared with page link instead.");
     },
     [buildTargets]
   );
 
-  /** X/Twitter: share the human-readable page URL. */
+  /** X/Twitter: share the human-readable page URL; OG image is auto. */
   const shareX = useCallback(
     (list: Token[]) => {
-      const { altarUrl } = buildTargets();
+      const { pageUrl } = buildTargets();
       const text = buildText(list, 280);
       const u = new URL("https://x.com/intent/tweet");
       u.searchParams.set("text", text);
-      u.searchParams.set("url", altarUrl);
+      u.searchParams.set("url", pageUrl);
       const href = u.toString();
       const w = window.open(href, "_top", "noopener,noreferrer");
       if (!w) window.location.href = href;
