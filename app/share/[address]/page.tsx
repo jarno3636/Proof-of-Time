@@ -73,15 +73,38 @@ export default async function Page({
   );
   const picks = parseSelected(sp);
 
-  // Best-effort warmup; ignore failures
-  await fetchRelics(address).catch(() => {});
+  // Load relics and compute the 0–3 chosen items (server-side)
+  const all = await fetchRelics(address).catch(() => [] as Token[]);
+  const chosen: Token[] =
+    picks.length > 0
+      ? all
+          .filter((t) => picks.includes(t.symbol.toUpperCase()))
+          .filter((t, i, arr) => arr.findIndex((x) => x.symbol === t.symbol) === i)
+          .slice(0, 3)
+      : all.sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
 
-  // Canonical page for sharing
+  // Canonical page URL for sharing
   const shareUrl = `${origin}/share/${address}${picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""}`;
 
-  // Build OG image path (relative) for <img> and the download link
+  // Embed a compact payload so the OG route NEVER fetches at edge (avoids 500)
+  type Lite = Pick<Token, "symbol" | "days" | "no_sell_streak_days" | "never_sold" | "tier">;
+  const lite: Lite[] = (chosen.length ? chosen : [{
+    symbol: "RELIC", days: 0, no_sell_streak_days: 0, never_sold: true, tier: "Bronze" as const,
+  }]).map((t) => ({
+    symbol: t.symbol,
+    days: Math.max(0, t.days || 0),
+    no_sell_streak_days: Math.max(0, t.no_sell_streak_days || 0),
+    never_sold: !!t.never_sold,
+    tier: t.tier,
+  }));
+
+  // Base64URL encode (Node runtime here is fine)
+  const payload = Buffer.from(JSON.stringify(lite), "utf8").toString("base64url");
+
+  // Build image path with data= payload and small cache-buster
   const qs = new URLSearchParams();
-  if (picks.length) qs.set("selected", picks.join(","));
+  qs.set("data", payload);
+  if (picks.length) qs.set("selected", picks.join(",")); // harmless/meta
   qs.set("v", Date.now().toString().slice(-6));
   const ogPath = `/share/${address}/opengraph-image?${qs.toString()}`;
 
@@ -129,7 +152,6 @@ export default async function Page({
           </figure>
         </section>
 
-        {/* Share buttons (bare composer logic handled inside component) */}
         <ShareActions className="mt-6" shareUrl={shareUrl} />
 
         <div className="mt-4">
