@@ -62,30 +62,36 @@ export default function ShareBar({
   selectedSymbols?: string[];
 }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const [aiLine, setAiLine] = useState<string>("");
+  const [aiLine, setAiLine] = useState<string>("");      // AI line cache
+  const [isFetching, setIsFetching] = useState(false);   // lock buttons while fetching once
 
-  // Pick which tokens to list in caption (up to 3 lines)
+  // Which tokens to mention in caption (up to 3, or selection if present)
   const chosen = useMemo(() => {
     if (!tokens?.length) return [] as Token[];
-    const bySym = new Map(tokens.map((t) => [t.symbol.toUpperCase(), t]));
     const wants = selectedSymbols.map((s) => (s || "").toUpperCase()).filter(Boolean);
     if (wants.length) {
+      const wanted = new Set(wants);
       const seen = new Set<string>();
-      return tokens.filter((t) => {
-        const S = t.symbol.toUpperCase();
-        if (!wants.includes(S) || seen.has(S)) return false;
-        seen.add(S);
-        return true;
-      }).slice(0, 3);
+      return tokens
+        .filter((t) => {
+          const S = t.symbol.toUpperCase();
+          if (!wanted.has(S) || seen.has(S)) return false;
+          seen.add(S);
+          return true;
+        })
+        .slice(0, 3);
     }
     return [...tokens].sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
   }, [tokens, selectedSymbols]);
 
-  // Fetch the AI line once per selection set
+  // Preload the AI line for the current selection set
   useEffect(() => {
     const controller = new AbortController();
     const syms = chosen.map((t) => t.symbol.toUpperCase());
-    fetchAIline(syms, controller.signal).then(setAiLine);
+    setIsFetching(true);
+    fetchAIline(syms, controller.signal)
+      .then(setAiLine)
+      .finally(() => setIsFetching(false));
     return () => controller.abort();
   }, [chosen]);
 
@@ -97,24 +103,27 @@ export default function ShareBar({
   const lineFor = (t: Token) => {
     const badge = t.never_sold ? "never sold" : `no-sell ${Math.max(0, t.no_sell_streak_days || 0)}d`;
     return `⌛ $${t.symbol} — ${Math.max(0, t.days || 0)}d (${badge})`;
-    // (Keep lines short; Warpcast & X have tight text + embed layout)
   };
 
-  const caption = useMemo(() => {
-    const quote = aiLine || localPick(chosen.map((t) => t.symbol).join("|"));
-    const lines = [title, ...chosen.map(lineFor), `“${quote}”`, "Time > hype. #ProofOfTime"];
-    const out = lines.join("\n");
-    return out.length <= 320 ? out : out.slice(0, 319);
-  }, [aiLine, chosen, title]);
+  // Build caption from a provided line (so we can await fresh AI text right before share)
+  const buildCaption = useCallback(
+    (lineText: string) => {
+      const quote = lineText || localPick(chosen.map((t) => t.symbol).join("|"));
+      const lines = [title, ...chosen.map(lineFor), `“${quote}”`, "Time > hype. #ProofOfTime"];
+      const out = lines.join("\n");
+      return out.length <= 320 ? out : out.slice(0, 319);
+    },
+    [chosen, title]
+  );
 
   const buildTargets = useCallback(() => {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
 
-    // Static image for embeds (always works)
+    // ✅ Use ONE static image for Warpcast embed
     const imgUrl = `${origin}/share.png`;
 
-    // Page deep-link preserves selection
+    // Keep a page deep-link for X (cards use OG meta), not embedded on Warpcast
     const page = new URL(`${origin}/relic/${addr}`);
     if (selectedSymbols.length) {
       page.searchParams.set("selected", selectedSymbols.join(","));
@@ -122,25 +131,47 @@ export default function ShareBar({
     return { pageUrl: page.toString(), imgUrl };
   }, [address, selectedSymbols]);
 
+  // Ensure we have an AI line before sharing; if cache empty, fetch once now.
+  const ensureLine = useCallback(async (): Promise<string> => {
+    if (aiLine) return aiLine;
+    const syms = chosen.map((t) => t.symbol.toUpperCase());
+    try {
+      setIsFetching(true);
+      const fresh = await fetchAIline(syms);
+      setAiLine(fresh);
+      return fresh;
+    } finally {
+      setIsFetching(false);
+    }
+  }, [aiLine, chosen]);
+
   const shareFC = useCallback(async () => {
     setMsg(null);
-    const { pageUrl, imgUrl } = buildTargets();
+    // ⏳ wait for AI line (falls back internally if needed)
+    const lineText = await ensureLine();
+    const caption = buildCaption(lineText);
+    const { imgUrl } = buildTargets();
+
     const ok = await shareOrCast({
       text: caption,
-      embeds: [imgUrl, pageUrl], // image first, then link-through
+      // ✅ Only ONE embed (static share.png) for Warpcast
+      embeds: [imgUrl],
     });
     if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
-  }, [buildTargets, caption]);
+  }, [ensureLine, buildCaption, buildTargets]);
 
-  const shareX = useCallback(() => {
+  const shareX = useCallback(async () => {
+    const lineText = await ensureLine();
+    const caption = buildCaption(lineText);
     const { pageUrl } = buildTargets();
+
     const u = new URL("https://x.com/intent/tweet");
     u.searchParams.set("text", caption.slice(0, 280));
     u.searchParams.set("url", pageUrl);
     const href = u.toString();
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
-  }, [buildTargets, caption]);
+  }, [ensureLine, buildCaption, buildTargets]);
 
   if (!tokens?.length) return null;
 
@@ -149,15 +180,28 @@ export default function ShareBar({
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={shareFC}
-          className="px-4 py-2 rounded-full bg-[#7C4DFF]/90 hover:bg-[#7C4DFF] text-white transition"
+          disabled={isFetching}
+          className={`px-4 py-2 rounded-full text-white transition ${
+            isFetching
+              ? "bg-white/10 cursor-wait"
+              : "bg-[#7C4DFF]/90 hover:bg-[#7C4DFF]"
+          }`}
+          title={isFetching ? "Preparing your caption…" : "Share on Farcaster"}
         >
-          Share on Farcaster
+          {isFetching ? "Preparing…" : "Share on Farcaster"}
         </button>
+
         <button
           onClick={shareX}
-          className="px-4 py-2 rounded-full bg-[#1DA1F2]/90 hover:bg-[#1DA1F2] text-white transition"
+          disabled={isFetching}
+          className={`px-4 py-2 rounded-full text-white transition ${
+            isFetching
+              ? "bg-white/10 cursor-wait"
+              : "bg-[#1DA1F2]/90 hover:bg-[#1DA1F2]"
+          }`}
+          title={isFetching ? "Preparing your caption…" : "Share on X"}
         >
-          Share on X
+          {isFetching ? "Preparing…" : "Share on X"}
         </button>
       </div>
       {msg && <div className="text-xs text-amber-300">{msg}</div>}
