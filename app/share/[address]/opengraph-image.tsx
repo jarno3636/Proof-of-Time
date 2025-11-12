@@ -54,7 +54,9 @@ export default async function Image({
   params: { address: string };
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const W = 1200, H = 630;
+  const W = 1200,
+    H = 630;
+
   try {
     const address = (params.address || "").toLowerCase();
     const picks = picksFrom(searchParams);
@@ -177,7 +179,6 @@ export default async function Image({
       { width: W, height: H }
     );
   } catch {
-    // Minimal fallback, never throw from OG
     return new ImageResponse(
       (
         <div
