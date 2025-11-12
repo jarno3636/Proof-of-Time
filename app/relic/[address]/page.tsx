@@ -28,21 +28,31 @@ export default function Page({ params }: { params: { address: string } }) {
 
   const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
 
-  // parse ?selected=SYM1,SYM2 (uppercased for matching)
+  // Parse ?selected=SYM (uppercased for matching). We only allow one, so take first.
   const selectedFromQS = useMemo(() => {
     const raw = searchParams?.get("selected") || "";
-    return raw
+    const first = raw
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => s.toUpperCase());
+      .filter(Boolean)[0];
+    return (first || "").toUpperCase();
   }, [searchParams]);
 
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>([]); // we’ll keep it as array, but max length = 1
+
+  // Compute Top-3 symbols (UPPERCASED) by days
+  const top3Symbols = useMemo(
+    () =>
+      [...tokens]
+        .sort((a, b) => (b.days || 0) - (a.days || 0))
+        .slice(0, 3)
+        .map((t) => t.symbol.toUpperCase()),
+    [tokens]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,23 +62,29 @@ export default function Page({ params }: { params: { address: string } }) {
       const toks = j.tokens || [];
       setTokens(toks);
 
-      // initialize selection from QS
-      if (selectedFromQS.length) {
-        const initial = toks
-          .filter((t) => selectedFromQS.includes(t.symbol.toUpperCase()))
-          .map((t) => t.symbol);
-        setSelected(initial);
+      // initialize selection: only allow 1 and must be within Top-3
+      if (selectedFromQS) {
+        const match = toks.find((t) => t.symbol.toUpperCase() === selectedFromQS);
+        const inTop3 = top3Symbols.includes(selectedFromQS);
+        setSelected(match && inTop3 ? [match.symbol] : []);
       } else {
-        setSelected((prev) => prev.filter((sym) => toks.some((t) => t.symbol === sym)));
+        // keep current if still valid; else clear
+        setSelected((prev) => {
+          const cur = (prev[0] || "").toUpperCase();
+          return cur && top3Symbols.includes(cur) ? prev.slice(0, 1) : [];
+        });
       }
     } catch (e: any) {
       setError(e?.message || "Unknown relic fetch error");
     } finally {
       setLoading(false);
     }
-  }, [targetAddr, selectedFromQS]);
+  }, [targetAddr, selectedFromQS, top3Symbols]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetAddr]); // avoid re-running just because top3 recalcs
 
   const onCompute = useCallback(async () => {
     setComputing(true);
@@ -89,20 +105,25 @@ export default function Page({ params }: { params: { address: string } }) {
     }
   }, [targetAddr, load]);
 
-  const toggleSelect = useCallback((symbol: string) => {
-    setSelected((cur) => (cur.includes(symbol) ? cur.filter((s) => s !== symbol) : [...cur, symbol]));
-  }, []);
+  // Single-select toggle; only allow if symbol is in Top-3
+  const toggleSelect = useCallback(
+    (symbol: string) => {
+      const symU = symbol.toUpperCase();
+      if (!top3Symbols.includes(symU)) return; // out of Top-3 → ignore
+      setSelected((cur) => (cur[0] === symbol ? [] : [symbol])); // max 1 selected
+    },
+    [top3Symbols]
+  );
 
   const isOwnerView =
     connected && typeof connected === "string" && connected.toLowerCase() === targetAddr;
 
-  // Share targets (page-based)
+  // Share targets (page-based). Only ever pass at most one symbol.
   const baseShareHref = useMemo(() => `/share/${targetAddr}`, [targetAddr]);
   const shareSelectedHref = useMemo(() => {
     if (!selected.length) return baseShareHref;
-    const list = selected.join(",");
     const u = new URL(baseShareHref, typeof window !== "undefined" ? window.location.origin : "https://proofoftime.vercel.app");
-    u.searchParams.set("selected", list);
+    u.searchParams.set("selected", selected[0]);
     return u.pathname + u.search + u.hash; // relative
   }, [baseShareHref, selected]);
 
@@ -113,7 +134,7 @@ export default function Page({ params }: { params: { address: string } }) {
         <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">Your Relic Altar</h1>
-            <p className="opacity-70 mt-1">Longest-held tokens on Base.</p>
+            <p className="opacity-70 mt-1">Pick <span className="font-semibold">one</span> of your Top-3 to share.</p>
           </div>
           <div className="justify-self-start md:justify-self-end text-right">
             <button
@@ -167,6 +188,8 @@ export default function Page({ params }: { params: { address: string } }) {
                 selectable
                 selected={selected}
                 onToggle={toggleSelect}
+                limitTo={top3Symbols}          // ← only Top-3 can be chosen
+                maxSelectable={1}              // ← enforce 1 selection
               />
             </div>
 
