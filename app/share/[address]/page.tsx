@@ -21,7 +21,6 @@ function absOrigin() {
 
 async function fetchRelics(addr: string): Promise<Token[]> {
   try {
-    // Relative keeps the request on the same deployment/region.
     const r = await fetch(`/api/relic/${addr}`, { cache: "no-store", next: { revalidate: 0 } });
     if (!r.ok) return [];
     const j = await r.json().catch(() => ({ tokens: [] as Token[] }));
@@ -46,7 +45,7 @@ export async function generateMetadata({ params, searchParams }: any) {
   const origin = absOrigin();
   const addr = (params.address || "").toLowerCase();
   const selected = (searchParams?.selected || searchParams?.pick || "").toString();
-  const title = selected ? `Relics: ${selected}` : `Relics for ${addr.slice(0,6)}…${addr.slice(-4)}`;
+  const title = selected ? `Relics: ${selected}` : `Relics for ${addr.slice(0, 6)}…${addr.slice(-4)}`;
   const description = "I stood the test of time. Check your relics at Proof of Time.";
   const url = `${origin}/share/${addr}${selected ? `?selected=${encodeURIComponent(selected)}` : ""}`;
   return {
@@ -70,37 +69,30 @@ export default async function Page({
   const address = (params.address || "").toLowerCase();
 
   const sp = new URLSearchParams(
-    Object.entries(searchParams).flatMap(([k, v]) =>
-      Array.isArray(v) ? v.map((x) => [k, x]) : [[k, v ?? ""]]
-    )
+    Object.entries(searchParams).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x]) : [[k, v ?? ""]]))
   );
   const picks = parseSelected(sp);
 
-  // Keep parity with the altar data fetch (even though we render an image).
-  await fetchRelics(address);
+  // Best-effort warmup; ignore failures
+  await fetchRelics(address).catch(() => {});
 
-  // Canonical share URL (used by ShareActions)
-  const shareUrl = `${origin}/share/${address}${
-    picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""
-  }`;
+  // Canonical page for sharing
+  const shareUrl = `${origin}/share/${address}${picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""}`;
 
-  // ✅ Build a PURE RELATIVE OG image path for both <img> and download.
+  // Build OG image path (relative) for <img> and the download link
   const qs = new URLSearchParams();
   if (picks.length) qs.set("selected", picks.join(","));
-  qs.set("v", Date.now().toString().slice(-6)); // small cache-buster
+  qs.set("v", Date.now().toString().slice(-6));
   const ogPath = `/share/${address}/opengraph-image?${qs.toString()}`;
 
   return (
     <main className="min-h-[100svh] bg-[#0b0e14] text-[#EDEEF2]">
       <div className="mx-auto max-w-5xl p-6">
+        {/* Header */}
         <header className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-              Relics to Share
-            </h1>
-            <p className="opacity-80 mt-1">
-              I stood the test of time — come see how you measure up.
-            </p>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">Relics to Share</h1>
+            <p className="opacity-80 mt-1">I stood the test of time — come see how you measure up.</p>
           </div>
 
           <a
@@ -116,9 +108,7 @@ export default async function Page({
         {/* Inline OG image preview */}
         <section className="mt-6">
           <figure className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
-            <figcaption className="px-2 pb-2 text-sm text-white/70">
-              Proof of Time — your relics
-            </figcaption>
+            <figcaption className="px-2 pb-2 text-sm text-white/70">Proof of Time — your relics</figcaption>
             <div className="rounded-2xl overflow-hidden border border-white/10 bg-[#0b0e14]">
               <img
                 src={ogPath}
@@ -128,7 +118,6 @@ export default async function Page({
                 loading="eager"
                 style={{ display: "block", width: "100%", height: "auto" }}
                 onError={(e) => {
-                  // graceful fallback if OG route hiccups
                   (e.currentTarget as HTMLImageElement).src =
                     "data:image/svg+xml;charset=utf-8," +
                     encodeURIComponent(
@@ -140,6 +129,7 @@ export default async function Page({
           </figure>
         </section>
 
+        {/* Share buttons (bare composer logic handled inside component) */}
         <ShareActions className="mt-6" shareUrl={shareUrl} />
 
         <div className="mt-4">
