@@ -1,3 +1,4 @@
+// app/share/[address]/page.tsx
 import Link from "next/link";
 import ShareActions from "@/components/ShareActions";
 
@@ -31,7 +32,7 @@ async function fetchRelics(addr: string): Promise<Token[]> {
   }
 }
 
-/** Parse “selected” (preferred) or “pick” (legacy). */
+/** Parse “selected” (preferred) or legacy “pick”. */
 function parseSelected(sp: URLSearchParams): string[] {
   const raw = (sp.get("selected") || sp.get("pick") || "").trim();
   return raw
@@ -77,7 +78,6 @@ export default async function Page({
   );
   const picks = parseSelected(sp);
 
-  // Preload (to keep current behavior / ranking); OG image uses the same data anyway
   const all = await fetchRelics(address);
   const chosen =
     picks.length > 0
@@ -87,21 +87,22 @@ export default async function Page({
           .slice(0, 3)
       : all.sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
 
-  // Canonical page URL (what we embed/share)
+  // Canonical share URL for social (no visible URL text on page)
   const shareUrl = `${origin}/share/${address}${
     picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""
   }`;
 
-  // ✅ Direct OG image URL (server route returns image/png) — also used for the inline <img />
-  const imgUrl =
-    `${origin}/share/${address}/opengraph-image` +
-    (picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : "") +
-    `&v=${Date.now().toString().slice(-6)}`;
+  // ✅ Always construct the image URL with URL + searchParams so the query string is valid.
+  const img = new URL(`${origin}/share/${address}/opengraph-image`);
+  if (picks.length) img.searchParams.set("selected", picks.join(","));
+  // Tiny cache-buster to avoid image reuse by some apps:
+  img.searchParams.set("v", Date.now().toString().slice(-6));
+  const imgUrl = img.toString();
 
   return (
     <main className="min-h-[100svh] bg-[#0b0e14] text-[#EDEEF2]">
       <div className="mx-auto max-w-5xl p-6">
-        {/* Header */}
+        {/* Header + short tagline */}
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
@@ -114,7 +115,7 @@ export default async function Page({
 
           <a
             href={imgUrl}
-            download
+            download={`relics-${address}.png`}
             className="rounded-xl px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-sm shrink-0"
             title="Download image"
           >
@@ -122,19 +123,28 @@ export default async function Page({
           </a>
         </header>
 
-        {/* The image itself (what social scrapers also use) */}
-        <figure className="mt-6">
-          <img
-            src={imgUrl}
-            alt="Proof of Time — your relics"
-            className="w-full rounded-2xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,.35)]"
-            loading="eager"
-            decoding="async"
-          />
-          <figcaption className="sr-only">Relics forged by patience</figcaption>
-        </figure>
+        {/* Image preview (server-rendered OG) */}
+        <section className="mt-6">
+          <figure className="rounded-3xl border border-white/10 bg-white/[0.03] p-3">
+            <figcaption className="px-2 pb-2 text-sm text-white/70">
+              Proof of Time — your relics
+            </figcaption>
+            <div className="rounded-2xl overflow-hidden border border-white/10 bg-[#0b0e14]">
+              {/* Use plain <img> (not next/image) so it fetches the PNG directly */}
+              <img
+                src={imgUrl}
+                alt="Relic altar preview"
+                width={1200}
+                height={630}
+                loading="eager"
+                style={{ display: "block", width: "100%", height: "auto" }}
+                crossOrigin="anonymous"
+              />
+            </div>
+          </figure>
+        </section>
 
-        {/* Share buttons (no visible URL/text on the page) */}
+        {/* Share buttons */}
         <ShareActions className="mt-6" shareUrl={shareUrl} />
 
         <div className="mt-4">
