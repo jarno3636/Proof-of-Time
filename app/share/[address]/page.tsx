@@ -21,7 +21,7 @@ function absOrigin() {
 
 async function fetchRelics(addr: string): Promise<Token[]> {
   try {
-    // Relative here is fine too since this is a server component
+    // Relative keeps the request on the same deployment/region.
     const r = await fetch(`/api/relic/${addr}`, { cache: "no-store", next: { revalidate: 0 } });
     if (!r.ok) return [];
     const j = await r.json().catch(() => ({ tokens: [] as Token[] }));
@@ -76,19 +76,19 @@ export default async function Page({
   );
   const picks = parseSelected(sp);
 
-  // Load to keep parity with the altar, even though we’re rendering an image
+  // Keep parity with the altar data fetch (even though we render an image).
   await fetchRelics(address);
 
-  // Social share URL (canonical page)
+  // Canonical share URL (used by ShareActions)
   const shareUrl = `${origin}/share/${address}${
     picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : ""
   }`;
 
-  // ✅ Build the OG image URL RELATIVELY, with proper query string.
-  const img = new URL(`/share/${address}/opengraph-image`, origin);
-  if (picks.length) img.searchParams.set("selected", picks.join(","));
-  img.searchParams.set("v", Date.now().toString().slice(-6)); // cache-buster
-  const imgPathRelative = img.pathname + "?" + img.searchParams.toString(); // use relative in <img> + download
+  // ✅ Build a PURE RELATIVE OG image path for both <img> and download.
+  const qs = new URLSearchParams();
+  if (picks.length) qs.set("selected", picks.join(","));
+  qs.set("v", Date.now().toString().slice(-6)); // small cache-buster
+  const ogPath = `/share/${address}/opengraph-image?${qs.toString()}`;
 
   return (
     <main className="min-h-[100svh] bg-[#0b0e14] text-[#EDEEF2]">
@@ -104,7 +104,7 @@ export default async function Page({
           </div>
 
           <a
-            href={imgPathRelative}
+            href={ogPath}
             download={`relics-${address}.png`}
             className="rounded-xl px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-sm shrink-0"
             title="Download image"
@@ -121,13 +121,20 @@ export default async function Page({
             </figcaption>
             <div className="rounded-2xl overflow-hidden border border-white/10 bg-[#0b0e14]">
               <img
-                src={imgPathRelative}
+                src={ogPath}
                 alt="Relic altar preview"
                 width={1200}
                 height={630}
                 loading="eager"
                 style={{ display: "block", width: "100%", height: "auto" }}
-                crossOrigin="anonymous"
+                onError={(e) => {
+                  // graceful fallback if OG route hiccups
+                  (e.currentTarget as HTMLImageElement).src =
+                    "data:image/svg+xml;charset=utf-8," +
+                    encodeURIComponent(
+                      `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'><rect width='100%' height='100%' fill='#0b0e14'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#fff' font-size='48' font-family='sans-serif'>Proof of Time</text></svg>`
+                    );
+                }}
               />
             </div>
           </figure>
