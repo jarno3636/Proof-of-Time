@@ -1,4 +1,4 @@
-"use client";
+""use client";
 import cn from "clsx";
 import RelicCard from "./RelicCard";
 
@@ -17,16 +17,29 @@ export default function RelicAltar({
   selected = [],
   onToggle,
   className,
+  limitTo,          // UPPERCASED symbols that may be selected (e.g., Top-3)
+  maxSelectable,    // e.g., 1 to force single-select
 }: {
   items: Item[];
   selectable?: boolean;
-  selected?: string[];
+  selected?: string[];     // case-sensitive symbols as displayed
   onToggle?: (symbol: string) => void;
   className?: string;
+  limitTo?: string[];      // compare with item.symbol.toUpperCase()
+  maxSelectable?: number;  // 1 ⇒ single-select
 }) {
+  const canPick = (sym: string) => !limitTo || limitTo.includes(sym.toUpperCase());
+
+  const handleSelect = (sym: string) => {
+    if (!selectable) return;
+    if (!canPick(sym)) return;
+    // parent enforces single-select; still call normally
+    onToggle?.(sym);
+  };
+
   return (
     <section
-      data-share="altar" /* used by /api/snap to capture pixel-perfect screenshots */
+      data-share="altar"
       className={cn(
         "relative mx-auto max-w-5xl",
         "rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-6",
@@ -48,20 +61,32 @@ export default function RelicAltar({
       </div>
 
       <div className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((it) => (
-          <RelicCard
-            key={`${it.symbol}-${it.token_address}`}
-            tokenAddress={it.token_address}
-            symbol={it.symbol}
-            days={it.days}
-            tier={it.tier}
-            noSell={it.no_sell_streak_days}
-            neverSold={it.never_sold}
-            selectable={selectable}
-            selected={selected.includes(it.symbol)}
-            onSelect={onToggle}
-          />
-        ))}
+        {items.map((it) => {
+          const isAllowed = canPick(it.symbol);
+          const isSelected = selected.includes(it.symbol);
+          const disabled =
+            selectable &&
+            ((!isAllowed) || (maxSelectable === 1 && !isSelected && selected.length >= 1));
+
+          return (
+            <div
+              key={`${it.symbol}-${it.token_address}`}
+              className={cn(disabled && "opacity-40 pointer-events-none")}
+            >
+              <RelicCard
+                tokenAddress={it.token_address}
+                symbol={it.symbol}
+                days={it.days}
+                tier={it.tier}
+                noSell={it.no_sell_streak_days}
+                neverSold={it.never_sold}
+                selectable={selectable}
+                selected={isSelected}
+                onSelect={handleSelect}
+              />
+            </div>
+          );
+        })}
       </div>
     </section>
   );
