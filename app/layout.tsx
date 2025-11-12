@@ -29,7 +29,7 @@ export const viewport: Viewport = {
   themeColor: "#0b0e14",
 };
 
-/* ---------- Metadata (sets absolute base for all OG/Twitter images) ---------- */
+/* ---------- Metadata ---------- */
 export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: { default: "Proof of Time", template: "%s · Proof of Time" },
@@ -43,13 +43,15 @@ export const metadata: Metadata = {
     description: "Your longest-held tokens on Base. Time > hype.",
     url: site,
     siteName: "Proof of Time",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Proof of Time" }],
+    images: [
+      { url: "/share.PNG", width: 1200, height: 630, alt: "Proof of Time" }, // ✅ Updated
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Proof of Time",
     description: "Your longest-held tokens on Base. Time > hype.",
-    images: ["/og.png"],
+    images: ["/share.PNG"], // ✅ Updated
   },
   icons: {
     icon: [{ url: "/favicon.ico" }, { url: "/icon.png", type: "image/png", sizes: "32x32" }],
@@ -72,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* ✅ Farcaster Mini-App meta */}
         <meta name="x-miniapp-name" content="Proof of Time" />
-        <meta name="x-miniapp-image" content={`${site}/og.png`} />
+        <meta name="x-miniapp-image" content={`${site}/share.PNG`} /> {/* ✅ Updated */}
         <meta name="x-miniapp-url" content={site} />
 
         {/* Ultra-early MiniApp ready ping + retries */}
