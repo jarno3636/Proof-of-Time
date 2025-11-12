@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
+import ShareBar from "@/components/ShareBar"; // ← NEW
 
 type ApiToken = {
   token_address: `0x${string}`;
@@ -25,10 +26,9 @@ async function getRelics(address: string) {
 export default function Page({ params }: { params: { address: string } }) {
   const { address: connected } = useAccount();
   const searchParams = useSearchParams();
-
   const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
 
-  // Parse ?selected=SYM (uppercased for matching). We only allow one, so take first.
+  // Only allow one selection from QS (optional)
   const selectedFromQS = useMemo(() => {
     const raw = searchParams?.get("selected") || "";
     const first = raw
@@ -42,9 +42,9 @@ export default function Page({ params }: { params: { address: string } }) {
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]); // we’ll keep it as array, but max length = 1
+  const [selected, setSelected] = useState<string[]>([]); // max length = 1
 
-  // Compute Top-3 symbols (UPPERCASED) by days
+  // Compute Top-3 symbols (UPPERCASED) by `days`
   const top3Symbols = useMemo(
     () =>
       [...tokens]
@@ -62,16 +62,21 @@ export default function Page({ params }: { params: { address: string } }) {
       const toks = j.tokens || [];
       setTokens(toks);
 
-      // initialize selection: only allow 1 and must be within Top-3
+      // Compute Top-3 from the fresh list to avoid stale deps
+      const freshTop3 = [...toks]
+        .sort((a, b) => (b.days || 0) - (a.days || 0))
+        .slice(0, 3)
+        .map((t) => t.symbol.toUpperCase());
+
+      // initialize single selection from QS if valid (Top-3 only)
       if (selectedFromQS) {
         const match = toks.find((t) => t.symbol.toUpperCase() === selectedFromQS);
-        const inTop3 = top3Symbols.includes(selectedFromQS);
-        setSelected(match && inTop3 ? [match.symbol] : []);
+        setSelected(match && freshTop3.includes(selectedFromQS) ? [match.symbol] : []);
       } else {
         // keep current if still valid; else clear
         setSelected((prev) => {
           const cur = (prev[0] || "").toUpperCase();
-          return cur && top3Symbols.includes(cur) ? prev.slice(0, 1) : [];
+          return cur && freshTop3.includes(cur) ? prev.slice(0, 1) : [];
         });
       }
     } catch (e: any) {
@@ -79,12 +84,11 @@ export default function Page({ params }: { params: { address: string } }) {
     } finally {
       setLoading(false);
     }
-  }, [targetAddr, selectedFromQS, top3Symbols]);
+  }, [targetAddr, selectedFromQS]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetAddr]); // avoid re-running just because top3 recalcs
+  }, [load]);
 
   const onCompute = useCallback(async () => {
     setComputing(true);
@@ -105,27 +109,18 @@ export default function Page({ params }: { params: { address: string } }) {
     }
   }, [targetAddr, load]);
 
-  // Single-select toggle; only allow if symbol is in Top-3
+  // Single-select toggle; only allow if symbol is inside Top-3
   const toggleSelect = useCallback(
     (symbol: string) => {
       const symU = symbol.toUpperCase();
-      if (!top3Symbols.includes(symU)) return; // out of Top-3 → ignore
-      setSelected((cur) => (cur[0] === symbol ? [] : [symbol])); // max 1 selected
+      if (!top3Symbols.includes(symU)) return; // ignore out-of-range
+      setSelected((cur) => (cur[0] === symbol ? [] : [symbol])); // max 1
     },
     [top3Symbols]
   );
 
   const isOwnerView =
     connected && typeof connected === "string" && connected.toLowerCase() === targetAddr;
-
-  // Share targets (page-based). Only ever pass at most one symbol.
-  const baseShareHref = useMemo(() => `/share/${targetAddr}`, [targetAddr]);
-  const shareSelectedHref = useMemo(() => {
-    if (!selected.length) return baseShareHref;
-    const u = new URL(baseShareHref, typeof window !== "undefined" ? window.location.origin : "https://proofoftime.vercel.app");
-    u.searchParams.set("selected", selected[0]);
-    return u.pathname + u.search + u.hash; // relative
-  }, [baseShareHref, selected]);
 
   return (
     <>
@@ -134,7 +129,9 @@ export default function Page({ params }: { params: { address: string } }) {
         <header className="grid grid-cols-1 md:grid-cols-[1fr_auto] items-start gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">Your Relic Altar</h1>
-            <p className="opacity-70 mt-1">Pick <span className="font-semibold">one</span> of your Top-3 to share.</p>
+            <p className="opacity-70 mt-1">
+              Pick <span className="font-semibold">one</span> of your Top-3 to share.
+            </p>
           </div>
           <div className="justify-self-start md:justify-self-end text-right">
             <button
@@ -188,30 +185,18 @@ export default function Page({ params }: { params: { address: string } }) {
                 selectable
                 selected={selected}
                 onToggle={toggleSelect}
-                limitTo={top3Symbols}          // ← only Top-3 can be chosen
-                maxSelectable={1}              // ← enforce 1 selection
+                limitTo={top3Symbols}  // only Top-3 may be chosen
+                maxSelectable={1}      // enforce single-select
               />
             </div>
 
-            {/* Share buttons -> routes to share page */}
-            <div className="mt-6 flex flex-wrap items-center gap-2">
-              <Link
-                href={shareSelectedHref}
-                className={`rounded-2xl px-4 py-3 text-sm sm:text-base transition ${
-                  selected.length ? "bg-white/10 hover:bg-white/20" : "bg-white/5 text-white/50 pointer-events-none"
-                }`}
-                aria-disabled={!selected.length}
-              >
-                Share Selected
-              </Link>
-              <Link
-                href={baseShareHref}
-                className="rounded-2xl px-4 py-3 text-sm sm:text-base bg-white/10 hover:bg-white/20 transition"
-              >
-                Share Altar
-              </Link>
-              <div className="text-xs text-zinc-400 ml-2">Opens a share page with preview + quick Farcaster/X</div>
-            </div>
+            {/* ✨ ShareBar (no /share page links) */}
+            <ShareBar
+              className="mt-6"
+              address={targetAddr}
+              tokens={tokens}
+              selectedSymbols={selected} // pass 0 or 1 symbol
+            />
 
             <p className="opacity-60 text-xs mt-6">
               Heads up: LP activity and wrapping/unwrapping patterns may affect continuous hold time.
