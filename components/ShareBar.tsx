@@ -1,3 +1,4 @@
+// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
@@ -44,79 +45,58 @@ export default function ShareBar({
   }, [tokens, selectedSymbols]);
 
   const titleLine = (list: Token[]) =>
-    list.length === 1 ? "⟡ Relic Revealed" : list.length <= 3 ? "⟡ Relics Revealed" : "⟡ Proof of Time — Altar";
+    list.length === 1 ? "✨ Relic Revealed" : "✨ Relics Revealed";
 
   const lineFor = (t: Token) => {
-    const badge = t.never_sold ? "✦ never sold" : `⏳ no-sell ${t.no_sell_streak_days}d`;
-    return `• $${t.symbol} — ${t.days}d (${badge})`;
+    const badge = t.never_sold ? "never sold" : `no-sell ${t.no_sell_streak_days}d`;
+    return `⌛ $${t.symbol} — ${t.days}d (${badge})`;
   };
 
   const safeTrim = (s: string, cap = 320) => (s.length <= cap ? s : s.slice(0, cap - 1) + "…");
   const buildText = (list: Token[], cap?: number) => {
-    const lines = [
-      titleLine(list),
-      ...list.map(lineFor),
-      "I stood the test of time — come see how you measure up.",
-      "Time > hype. #ProofOfTime ⏳",
-    ];
+    const lines = [titleLine(list), ...list.map(lineFor), "Time > hype. #ProofOfTime"];
     const out = lines.join("\n");
     return cap ? safeTrim(out, cap) : out;
   };
 
-  /**
-   * Build canonical share targets:
-   *  - pageUrl: canonical /share/ADDRESS[?selected=…]
-   *  - embedUrl: same as canonical (used for Farcaster embeds — no cache-buster)
-   *  - xUrl: canonical + tiny cache-buster (nudges X scraper only)
-   */
   const buildTargets = useCallback(
     (list: Token[]) => {
       const origin = siteOrigin();
       const addr = (address || "").toLowerCase();
-
-      // if user selected 1–3, keep those; else share the full altar page
-      const picks =
-        list.length > 0 && list.length <= 3
-          ? Array.from(new Set(list.map((t) => t.symbol.toUpperCase()))).slice(0, 3)
-          : [];
-
-      const base = `${origin}/share/${addr}`;
-      const qs = picks.length ? `?selected=${encodeURIComponent(picks.join(","))}` : "";
-      const pageUrl = `${base}${qs}`;
-
-      // Farcaster should get the clean canonical URL as an embed
-      const embedUrl = pageUrl;
-
-      // X gets the same URL but with a tiny cache-buster
-      const xUrl = `${pageUrl}${pageUrl.includes("?") ? "&" : "?"}v=${Date.now().toString().slice(-6)}`;
-
-      return { pageUrl, embedUrl, xUrl };
+      const pageUrl = `${origin}/relic/${addr}`; // main altar page
+      const sel = list.map((t) => t.symbol.toUpperCase()).join(",");
+      const imgUrl =
+        `${origin}/api/share/relic/${addr}/image` +
+        (sel ? `?selected=${encodeURIComponent(sel)}` : "") +
+        `&v=${Date.now().toString().slice(-6)}`;
+      return { pageUrl, imgUrl };
     },
     [address]
   );
 
-  /** Farcaster: embed the canonical URL; inside Warpcast use SDK, outside open web composer. */
   const shareFC = useCallback(
     async (list: Token[]) => {
       setMsg(null);
-      const { embedUrl } = buildTargets(list);
-      const baseText = buildText(list, 320);
-
-      // In-app, do NOT add the URL to text; let the embed render the OG card
-      const ok = await shareOrCast({ text: baseText, embeds: [embedUrl] });
+      const { pageUrl, imgUrl } = buildTargets(list);
+      const text = buildText(list, 320);
+      const ok = await shareOrCast({
+        text,
+        // Warpcast supports multiple embeds: first image, second page (for click-through)
+        embeds: [imgUrl, pageUrl],
+      });
       if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
     },
     [buildTargets]
   );
 
-  /** X/Twitter: tweet with the canonical URL (plus cache-buster) and tight copy. */
   const shareX = useCallback(
     (list: Token[]) => {
-      const { xUrl } = buildTargets(list);
+      // X cards won’t render raw images via URL param, so share the page.
+      const { pageUrl } = buildTargets(list);
       const text = buildText(list, 280);
       const u = new URL("https://x.com/intent/tweet");
       u.searchParams.set("text", text);
-      u.searchParams.set("url", xUrl);
+      u.searchParams.set("url", pageUrl);
       const href = u.toString();
       const w = window.open(href, "_top", "noopener,noreferrer");
       if (!w) window.location.href = href;
@@ -127,29 +107,13 @@ export default function ShareBar({
   return (
     <div className="mt-6 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => shareFC(tokens)} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
-          Share Altar (Farcaster)
+        <button onClick={() => shareFC(selected.length ? selected : tokens)} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
+          Share on Farcaster
         </button>
-        <button
-          onClick={() => selected.length && shareFC(selected)}
-          disabled={!selected.length}
-          className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
-        >
-          Share Selected (Farcaster)
-        </button>
-
-        <button onClick={() => shareX(tokens)} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
-          Share Altar (X)
-        </button>
-        <button
-          onClick={() => selected.length && shareX(selected)}
-          disabled={!selected.length}
-          className="px-4 py-2 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/20"
-        >
-          Share Selected (X)
+        <button onClick={() => shareX(selected.length ? selected : tokens)} className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">
+          Share on X
         </button>
       </div>
-
       {msg && <div className="text-xs text-amber-300 mt-1">{msg}</div>}
     </div>
   );
