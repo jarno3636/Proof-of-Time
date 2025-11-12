@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { shareOrCast } from "@/lib/share";
+import { shareOrCast, getFarcasterMiniAppLink } from "@/lib/share";
 
 type Token = {
   token_address: `0x${string}`;
@@ -108,7 +108,6 @@ export default function ShareBar({
     (lineText: string) => {
       const quote = lineText || localPick(chosen.map((t) => t.symbol).join("|"));
       const lines = [title, ...chosen.map(lineFor), `“${quote}”`, "Time > hype. #ProofOfTime"];
-      // Keep previous trim for readability in composer (does not affect the link appended below)
       const out = lines.join("\n");
       return out.length <= 320 ? out : out.slice(0, 319);
     },
@@ -119,14 +118,17 @@ export default function ShareBar({
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
 
-    // ✅ Image embed (single)
+    // ✅ Single image embed
     const imgUrl = `${origin}/share.PNG`;
 
-    // ✅ Hyperlink target (in text only)
-    const page = new URL(`${origin}/relic/${addr}`);
-    if (selectedSymbols.length) page.searchParams.set("selected", selectedSymbols.join(","));
+    // ✅ Web page (for Twitter)
+    const webUrl = new URL(`${origin}/relic/${addr}`);
+    if (selectedSymbols.length) webUrl.searchParams.set("selected", selectedSymbols.join(","));
 
-    return { pageUrl: page.toString(), imgUrl };
+    // ✅ Farcaster mini-app link (for casts text hyperlink)
+    const miniUrl = getFarcasterMiniAppLink();
+
+    return { imgUrl, webUrl: webUrl.toString(), miniUrl };
   }, [address, selectedSymbols]);
 
   const ensureLine = useCallback(async (): Promise<string> => {
@@ -142,15 +144,14 @@ export default function ShareBar({
     }
   }, [aiLine, chosen]);
 
-  // --- Warpcast (Farcaster) ---
+  // --- Warpcast (Farcaster): single image embed + mini-app hyperlink in text ---
   const shareFC = useCallback(async () => {
     setMsg(null);
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
-    const { imgUrl, pageUrl } = buildTargets();
+    const { imgUrl, miniUrl } = buildTargets();
 
-    // ✅ Put the mini-app URL in the TEXT so it’s a clickable hyperlink.
-    const textWithLink = `${caption}\n\n${pageUrl}`;
+    const textWithLink = `${caption}\n\n${miniUrl}`; // ✅ hyperlink to mini-app
 
     const ok = await shareOrCast({
       text: textWithLink,
@@ -160,19 +161,17 @@ export default function ShareBar({
     if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
   }, [ensureLine, buildCaption, buildTargets]);
 
-  // --- X/Twitter (unchanged: image-only link in URL field) ---
+  // --- X/Twitter: link to the web page (not the mini-app) ---
   const shareX = useCallback(async () => {
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
-    const { imgUrl, pageUrl } = buildTargets();
+    const { imgUrl, webUrl } = buildTargets();
 
-    // Keep caption tight for X; add the pageUrl at the end for clickthrough.
-    const tweet = `${caption}\n\n${pageUrl}`.slice(0, 280);
+    const tweet = `${caption}\n\n${webUrl}`.slice(0, 280);
 
     const u = new URL("https://x.com/intent/tweet");
     u.searchParams.set("text", tweet);
-    // Use image URL to force the preview on clients that respect it
-    u.searchParams.set("url", imgUrl);
+    u.searchParams.set("url", imgUrl); // show the image where supported
 
     const href = u.toString();
     const w = window.open(href, "_blank", "noopener,noreferrer");
