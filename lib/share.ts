@@ -56,13 +56,15 @@ export function isInFarcasterEnv(): boolean {
   }
 }
 
+// 👇 Enforce a single, first valid embed (the image)
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
-  return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
+  const one = list.map((e) => safeUrl(e)).filter(Boolean).slice(0, 1); // <= only one
+  return one as string[];
 }
 
-/* ---------- Warpcast web composer URL (do NOT inject URL into text) ---------- */
+/* ---------- Warpcast web composer URL (single embed) ---------- */
 export function buildWarpcastCompose({
   text = "",
   embeds = [],
@@ -80,7 +82,7 @@ export function buildWarpcastCompose({
   return `${base}?${params.toString()}`;
 }
 
-/* ---------- Main: SDK inside Warpcast; robust fallbacks ---------- */
+/* ---------- Main: SDK inside Warpcast; robust fallbacks (single embed) ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
@@ -89,7 +91,7 @@ export async function shareOrCast({
   embeds?: string[];
 }) {
   const fullText = (text || "").trim();
-  const embedList = normEmbeds(embeds);
+  const embedList = normEmbeds(embeds); // <= single image only
 
   if (isInFarcasterEnv()) {
     // 1) Try MiniKit compose
@@ -130,7 +132,7 @@ export async function shareOrCast({
     }
   }
 
-  // Outside Warpcast: open web composer
+  // Outside Warpcast: open web composer (single embed)
   try {
     const href = buildWarpcastCompose({ text: fullText, embeds: embedList });
     const w = window.open(href, "_blank", "noopener,noreferrer");
