@@ -56,12 +56,16 @@ export function isInFarcasterEnv(): boolean {
   }
 }
 
-// 👇 Enforce a single, first valid embed (the image)
+/** ✅ Public helper: canonical FC mini-app link (safe, absolute URL) */
+export function getFarcasterMiniAppLink(): string {
+  return safeUrl(FARCASTER_MINIAPP_LINK);
+}
+
+// ✅ Enforce a single, first valid embed (the image)
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
-  const one = list.map((e) => safeUrl(e)).filter(Boolean).slice(0, 1); // <= only one
-  return one as string[];
+  return list.map((e) => safeUrl(e)).filter(Boolean).slice(0, 1) as string[];
 }
 
 /* ---------- Warpcast web composer URL (single embed) ---------- */
