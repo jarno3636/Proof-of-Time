@@ -1,4 +1,3 @@
-// components/ShareBar.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -62,10 +61,10 @@ export default function ShareBar({
   selectedSymbols?: string[];
 }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const [aiLine, setAiLine] = useState<string>("");      // AI line cache
-  const [isFetching, setIsFetching] = useState(false);   // lock buttons while fetching once
+  const [aiLine, setAiLine] = useState<string>("");
+  const [isFetching, setIsFetching] = useState(false);
 
-  // Which tokens to mention in caption (up to 3, or selection if present)
+  // choose up to 3 tokens or selection
   const chosen = useMemo(() => {
     if (!tokens?.length) return [] as Token[];
     const wants = selectedSymbols.map((s) => (s || "").toUpperCase()).filter(Boolean);
@@ -84,7 +83,7 @@ export default function ShareBar({
     return [...tokens].sort((a, b) => (b.days || 0) - (a.days || 0)).slice(0, 3);
   }, [tokens, selectedSymbols]);
 
-  // Preload the AI line for the current selection set
+  // preload AI line
   useEffect(() => {
     const controller = new AbortController();
     const syms = chosen.map((t) => t.symbol.toUpperCase());
@@ -105,7 +104,6 @@ export default function ShareBar({
     return `⌛ $${t.symbol} — ${Math.max(0, t.days || 0)}d (${badge})`;
   };
 
-  // Build caption from a provided line (so we can await fresh AI text right before share)
   const buildCaption = useCallback(
     (lineText: string) => {
       const quote = lineText || localPick(chosen.map((t) => t.symbol).join("|"));
@@ -119,19 +117,12 @@ export default function ShareBar({
   const buildTargets = useCallback(() => {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
-
-    // ✅ Use ONE static image for Warpcast embed
-    const imgUrl = `${origin}/share.PNG`;
-
-    // Keep a page deep-link for X (cards use OG meta), not embedded on Warpcast
+    const imgUrl = `${origin}/share.PNG`; // ✅ capitalized static PNG
     const page = new URL(`${origin}/relic/${addr}`);
-    if (selectedSymbols.length) {
-      page.searchParams.set("selected", selectedSymbols.join(","));
-    }
+    if (selectedSymbols.length) page.searchParams.set("selected", selectedSymbols.join(","));
     return { pageUrl: page.toString(), imgUrl };
   }, [address, selectedSymbols]);
 
-  // Ensure we have an AI line before sharing; if cache empty, fetch once now.
   const ensureLine = useCallback(async (): Promise<string> => {
     if (aiLine) return aiLine;
     const syms = chosen.map((t) => t.symbol.toUpperCase());
@@ -145,29 +136,28 @@ export default function ShareBar({
     }
   }, [aiLine, chosen]);
 
+  // --- Warpcast ---
   const shareFC = useCallback(async () => {
     setMsg(null);
-    // ⏳ wait for AI line (falls back internally if needed)
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
     const { imgUrl } = buildTargets();
-
     const ok = await shareOrCast({
       text: caption,
-      // ✅ Only ONE embed (static share.png) for Warpcast
-      embeds: [imgUrl],
+      embeds: [imgUrl], // ✅ only one image embed
     });
     if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
   }, [ensureLine, buildCaption, buildTargets]);
 
+  // --- X/Twitter ---
   const shareX = useCallback(async () => {
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
-    const { pageUrl } = buildTargets();
-
+    const { imgUrl } = buildTargets();
     const u = new URL("https://x.com/intent/tweet");
     u.searchParams.set("text", caption.slice(0, 280));
-    u.searchParams.set("url", pageUrl);
+    // ✅ link to share.PNG directly to show image
+    u.searchParams.set("url", imgUrl);
     const href = u.toString();
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
@@ -182,11 +172,8 @@ export default function ShareBar({
           onClick={shareFC}
           disabled={isFetching}
           className={`px-4 py-2 rounded-full text-white transition ${
-            isFetching
-              ? "bg-white/10 cursor-wait"
-              : "bg-[#7C4DFF]/90 hover:bg-[#7C4DFF]"
+            isFetching ? "bg-white/10 cursor-wait" : "bg-[#7C4DFF]/90 hover:bg-[#7C4DFF]"
           }`}
-          title={isFetching ? "Preparing your caption…" : "Share on Farcaster"}
         >
           {isFetching ? "Preparing…" : "Share on Farcaster"}
         </button>
@@ -195,11 +182,8 @@ export default function ShareBar({
           onClick={shareX}
           disabled={isFetching}
           className={`px-4 py-2 rounded-full text-white transition ${
-            isFetching
-              ? "bg-white/10 cursor-wait"
-              : "bg-[#1DA1F2]/90 hover:bg-[#1DA1F2]"
+            isFetching ? "bg-white/10 cursor-wait" : "bg-[#1DA1F2]/90 hover:bg-[#1DA1F2]"
           }`}
-          title={isFetching ? "Preparing your caption…" : "Share on X"}
         >
           {isFetching ? "Preparing…" : "Share on X"}
         </button>
