@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     symbols = Array.isArray(body?.symbols) ? body.symbols.slice(0, 3) : [];
   } catch {}
 
-  // If no key, return deterministic fallback
+  // fallback immediately if no key
   if (!key) {
     return NextResponse.json({ line: pickFallback(symbols.join("|")) });
   }
@@ -34,16 +34,22 @@ export async function POST(req: Request) {
   const controller = new AbortController();
   const to = setTimeout(() => controller.abort(), 2500);
 
-  const prompt = [
+  const basePrompt = [
     "Write ONE short, profound line (<=120 chars) about time, patience, discipline, loyalty, happiness, or will.",
-    "No hashtags. No emojis. No quotes around it.",
-    symbols.length ? `Optional nod to: ${symbols.map((s) => "$" + s).join(", ")} (keep subtle).` : "",
-  ]
-    .join(" ")
-    .trim();
+    "No emojis. No hashtags. It should feel timeless and subtle — like an inscription or proverb.",
+  ];
+
+  if (symbols.length) {
+    basePrompt.push(
+      `If it feels natural, you may weave in a gentle nod to: ${symbols
+        .map((s) => "$" + s)
+        .join(", ")} — but only if it fits the tone.`
+    );
+  }
+
+  const prompt = basePrompt.join(" ");
 
   try {
-    // Chat Completions (“messages route”)
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,
@@ -54,10 +60,14 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: "You craft brief, timeless aphorisms. Max 120 chars. No emojis. No hashtags." },
+          {
+            role: "system",
+            content:
+              "You are a quiet sage who writes brief, profound lines about time, patience, willpower, and consistency. Speak like an ancient mentor.",
+          },
           { role: "user", content: prompt },
         ],
-        temperature: 0.7,
+        temperature: 0.75,
         max_tokens: 60,
       }),
     });
@@ -67,12 +77,20 @@ export async function POST(req: Request) {
     if (!r.ok) {
       return NextResponse.json({ line: pickFallback(symbols.join("|")) });
     }
-    const j = await r.json().catch(() => ({} as any));
-    const raw =
+
+    const j = await r.json().catch(() => ({}));
+    const txt =
       j?.choices?.[0]?.message?.content?.trim?.() ||
       j?.choices?.[0]?.message?.content ||
       "";
-    const line = raw ? (raw.length <= 120 ? raw : raw.slice(0, 119) + "…") : pickFallback(symbols.join("|"));
+
+    const line =
+      txt && txt.length <= 120
+        ? txt
+        : txt
+        ? txt.slice(0, 119) + "…"
+        : pickFallback(symbols.join("|"));
+
     return NextResponse.json({ line });
   } catch {
     clearTimeout(to);
