@@ -26,7 +26,7 @@ function isInFarcasterEnv(): boolean {
 type Props = {
   text: string;
   embeds?: string[] | readonly string[];
-  /** Optional web URL (NOT injected into text). Added to embeds for web composer only. */
+  /** (Ignored for Farcaster + web composer to enforce single-embed image) */
   url?: string;
   className?: string;
   disabled?: boolean;
@@ -38,7 +38,7 @@ type Props = {
 export default function ShareToFarcasterButton({
   text,
   embeds = [],
-  url,
+  url, // no-op now
   className,
   disabled,
   title,
@@ -50,7 +50,7 @@ export default function ShareToFarcasterButton({
     const embedList: string[] = Array.isArray(embeds) ? embeds.map(String) : [];
 
     if (isInFarcasterEnv()) {
-      // IN WARPCAST: try SDK compose; do not open web composer
+      // IN WARPCAST: SDK compose with a single embed (image)
       const typedComposeCast = composeCast as unknown as (args: {
         text?: string;
         embeds?: string[];
@@ -62,19 +62,14 @@ export default function ShareToFarcasterButton({
         return;
       }
       try {
-        (window as any)?.__toast?.(
-          "Couldn’t open composer in-app. Update Warpcast and try again."
-        );
+        (window as any)?.__toast?.("Couldn’t open composer in-app. Update Warpcast and try again.");
       } catch {}
       onDone?.("noop");
       return;
     }
 
-    // OUTSIDE WARPCAST: open Warpcast web composer (URL NOT injected into text).
-    // If a url prop was provided, pass it as an additional embed.
-    const finalEmbeds = url ? [...embedList, url] : embedList;
-    const href = buildWarpcastCompose({ text: fullText, embeds: finalEmbeds });
-
+    // OUTSIDE WARPCAST: open Warpcast web composer with the SAME single image embed
+    const href = buildWarpcastCompose({ text: fullText, embeds: embedList }); // 👈 no URL appended
     try {
       const w = window.open(href, "_blank", "noopener,noreferrer");
       if (!w) window.location.href = href;
@@ -87,7 +82,7 @@ export default function ShareToFarcasterButton({
         onDone?.("noop");
       }
     }
-  }, [text, url, embeds, onDone]);
+  }, [text, embeds, onDone]);
 
   return (
     <button
