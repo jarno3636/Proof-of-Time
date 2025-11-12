@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import RelicAltar from "@/components/RelicAltar";
-import ShareBar from "@/components/ShareBar"; // ← NEW
+import ShareBar from "@/components/ShareBar";
 
 type ApiToken = {
   token_address: `0x${string}`;
@@ -28,31 +27,21 @@ export default function Page({ params }: { params: { address: string } }) {
   const searchParams = useSearchParams();
   const targetAddr = useMemo(() => (params.address || "").toLowerCase(), [params.address]);
 
-  // Only allow one selection from QS (optional)
+  // Parse ?selected=SYM1,SYM2,SYM3 (uppercased for matching)
   const selectedFromQS = useMemo(() => {
     const raw = searchParams?.get("selected") || "";
-    const first = raw
+    return raw
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean)[0];
-    return (first || "").toUpperCase();
+      .filter(Boolean)
+      .map((s) => s.toUpperCase());
   }, [searchParams]);
 
   const [loading, setLoading] = useState(true);
   const [computing, setComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [selected, setSelected] = useState<string[]>([]); // max length = 1
-
-  // Compute Top-3 symbols (UPPERCASED) by `days`
-  const top3Symbols = useMemo(
-    () =>
-      [...tokens]
-        .sort((a, b) => (b.days || 0) - (a.days || 0))
-        .slice(0, 3)
-        .map((t) => t.symbol.toUpperCase()),
-    [tokens]
-  );
+  const [selected, setSelected] = useState<string[]>([]); // multi-select (we’ll show up to 3 in captions)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,22 +51,15 @@ export default function Page({ params }: { params: { address: string } }) {
       const toks = j.tokens || [];
       setTokens(toks);
 
-      // Compute Top-3 from the fresh list to avoid stale deps
-      const freshTop3 = [...toks]
-        .sort((a, b) => (b.days || 0) - (a.days || 0))
-        .slice(0, 3)
-        .map((t) => t.symbol.toUpperCase());
-
-      // initialize single selection from QS if valid (Top-3 only)
-      if (selectedFromQS) {
-        const match = toks.find((t) => t.symbol.toUpperCase() === selectedFromQS);
-        setSelected(match && freshTop3.includes(selectedFromQS) ? [match.symbol] : []);
+      // initialize selection from QS (keep order as in tokens)
+      if (selectedFromQS.length) {
+        const initial = toks
+          .filter((t) => selectedFromQS.includes(t.symbol.toUpperCase()))
+          .map((t) => t.symbol);
+        setSelected(initial);
       } else {
-        // keep current if still valid; else clear
-        setSelected((prev) => {
-          const cur = (prev[0] || "").toUpperCase();
-          return cur && freshTop3.includes(cur) ? prev.slice(0, 1) : [];
-        });
+        // prune selection to still-existing tokens
+        setSelected((prev) => prev.filter((sym) => toks.some((t) => t.symbol === sym)));
       }
     } catch (e: any) {
       setError(e?.message || "Unknown relic fetch error");
@@ -86,9 +68,7 @@ export default function Page({ params }: { params: { address: string } }) {
     }
   }, [targetAddr, selectedFromQS]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const onCompute = useCallback(async () => {
     setComputing(true);
@@ -109,15 +89,10 @@ export default function Page({ params }: { params: { address: string } }) {
     }
   }, [targetAddr, load]);
 
-  // Single-select toggle; only allow if symbol is inside Top-3
-  const toggleSelect = useCallback(
-    (symbol: string) => {
-      const symU = symbol.toUpperCase();
-      if (!top3Symbols.includes(symU)) return; // ignore out-of-range
-      setSelected((cur) => (cur[0] === symbol ? [] : [symbol])); // max 1
-    },
-    [top3Symbols]
-  );
+  // Toggle any symbol (no hard cap here; ShareBar will just list up to 3 lines nicely)
+  const toggleSelect = useCallback((symbol: string) => {
+    setSelected((cur) => (cur.includes(symbol) ? cur.filter((s) => s !== symbol) : [...cur, symbol]));
+  }, []);
 
   const isOwnerView =
     connected && typeof connected === "string" && connected.toLowerCase() === targetAddr;
@@ -130,7 +105,7 @@ export default function Page({ params }: { params: { address: string } }) {
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">Your Relic Altar</h1>
             <p className="opacity-70 mt-1">
-              Pick <span className="font-semibold">one</span> of your Top-3 to share.
+              Select a few to showcase <span className="font-semibold">(or share your whole altar)</span>.
             </p>
           </div>
           <div className="justify-self-start md:justify-self-end text-right">
@@ -185,17 +160,15 @@ export default function Page({ params }: { params: { address: string } }) {
                 selectable
                 selected={selected}
                 onToggle={toggleSelect}
-                limitTo={top3Symbols}  // only Top-3 may be chosen
-                maxSelectable={1}      // enforce single-select
               />
             </div>
 
-            {/* ✨ ShareBar (no /share page links) */}
+            {/* Share bar: uses /share.png as the image, includes selected (or full) in caption */}
             <ShareBar
               className="mt-6"
               address={targetAddr}
               tokens={tokens}
-              selectedSymbols={selected} // pass 0 or 1 symbol
+              selectedSymbols={selected}
             />
 
             <p className="opacity-60 text-xs mt-6">
