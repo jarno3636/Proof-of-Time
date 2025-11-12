@@ -121,7 +121,7 @@ export default function ShareBar({
     const addr = (address || "").toLowerCase();
 
     // ✅ Use ONE static image for Warpcast embed
-    const imgUrl = `${origin}/share.png`;
+    const imgUrl = `${origin}/share.PNG`;
 
     // Keep a page deep-link for X (cards use OG meta), not embedded on Warpcast
     const page = new URL(`${origin}/relic/${addr}`);
