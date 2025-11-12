@@ -108,6 +108,7 @@ export default function ShareBar({
     (lineText: string) => {
       const quote = lineText || localPick(chosen.map((t) => t.symbol).join("|"));
       const lines = [title, ...chosen.map(lineFor), `“${quote}”`, "Time > hype. #ProofOfTime"];
+      // Keep previous trim for readability in composer (does not affect the link appended below)
       const out = lines.join("\n");
       return out.length <= 320 ? out : out.slice(0, 319);
     },
@@ -117,9 +118,14 @@ export default function ShareBar({
   const buildTargets = useCallback(() => {
     const origin = siteOrigin();
     const addr = (address || "").toLowerCase();
-    const imgUrl = `${origin}/share.PNG`; // ✅ capitalized static PNG
+
+    // ✅ Image embed (single)
+    const imgUrl = `${origin}/share.PNG`;
+
+    // ✅ Hyperlink target (in text only)
     const page = new URL(`${origin}/relic/${addr}`);
     if (selectedSymbols.length) page.searchParams.set("selected", selectedSymbols.join(","));
+
     return { pageUrl: page.toString(), imgUrl };
   }, [address, selectedSymbols]);
 
@@ -136,28 +142,38 @@ export default function ShareBar({
     }
   }, [aiLine, chosen]);
 
-  // --- Warpcast ---
+  // --- Warpcast (Farcaster) ---
   const shareFC = useCallback(async () => {
     setMsg(null);
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
-    const { imgUrl } = buildTargets();
+    const { imgUrl, pageUrl } = buildTargets();
+
+    // ✅ Put the mini-app URL in the TEXT so it’s a clickable hyperlink.
+    const textWithLink = `${caption}\n\n${pageUrl}`;
+
     const ok = await shareOrCast({
-      text: caption,
-      embeds: [imgUrl], // ✅ only one image embed
+      text: textWithLink,
+      embeds: [imgUrl], // ✅ exactly one image embed
     });
+
     if (!ok) setMsg("Could not open Farcaster composer. Update Warpcast and try again.");
   }, [ensureLine, buildCaption, buildTargets]);
 
-  // --- X/Twitter ---
+  // --- X/Twitter (unchanged: image-only link in URL field) ---
   const shareX = useCallback(async () => {
     const lineText = await ensureLine();
     const caption = buildCaption(lineText);
-    const { imgUrl } = buildTargets();
+    const { imgUrl, pageUrl } = buildTargets();
+
+    // Keep caption tight for X; add the pageUrl at the end for clickthrough.
+    const tweet = `${caption}\n\n${pageUrl}`.slice(0, 280);
+
     const u = new URL("https://x.com/intent/tweet");
-    u.searchParams.set("text", caption.slice(0, 280));
-    // ✅ link to share.PNG directly to show image
+    u.searchParams.set("text", tweet);
+    // Use image URL to force the preview on clients that respect it
     u.searchParams.set("url", imgUrl);
+
     const href = u.toString();
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
