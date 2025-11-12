@@ -1,4 +1,4 @@
-// app/api/share/relic/[address]/image/route.ts
+// app/api/share/relic/[address]/image/route.tsx
 import { ImageResponse } from "next/og";
 import { headers } from "next/headers";
 
