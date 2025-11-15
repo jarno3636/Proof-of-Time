@@ -7,9 +7,7 @@ import Footer from "@/components/Footer";
 
 /* ---------- Client islands ---------- */
 const RevealRelicsInline = dynamic(() => import("@/components/RevealRelicsInline"), { ssr: false });
-// ⛔ Removed HomeCountdown + LaunchShare
 const RelicLegend        = dynamic(() => import("@/components/RelicLegend"),        { ssr: false });
-// ✅ Buy button
 const BuyButton          = dynamic(() => import("@/components/BuyButton"),          { ssr: false });
 
 export default function Home() {
@@ -36,13 +34,22 @@ export default function Home() {
               <RevealRelicsInline />
             </div>
 
-            {/* Secondary CTA */}
-            <div className="mt-4">
+            {/* 🔥 Burn highlight block (replacing old "View Token Launch" button) */}
+            <div className="mt-5 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-3 text-xs sm:text-sm">
+              <div className="font-semibold text-[#BBA46A]">
+                Supply Update: 100M PøT Burned
+              </div>
+              <p className="mt-1 text-zinc-400">
+                100,000,000 PøT were permanently sent to the burn address to tighten supply
+                and reward long-term holders.
+              </p>
               <a
-                href="/launch"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
+                href="https://basescan.org/tx/0xd55d4b1f4c9e7f18519f29f6abeee223210e1125fa27f197f6bb346b1aec525d"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-zinc-700/70 bg-zinc-950/40 px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-zinc-200 hover:text-[#BBA46A] hover:border-[#BBA46A]/60 transition"
               >
-                View Token Launch
+                View burn tx on BaseScan ↗
               </a>
             </div>
           </div>
