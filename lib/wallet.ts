@@ -1,5 +1,5 @@
 // lib/wallet.ts
-import { http, cookieStorage, createStorage, createConfig } from "wagmi";
+import { http, createConfig } from "wagmi";
 import { base } from "viem/chains";
 
 // RainbowKit wallet factories (modal buttons)
@@ -72,11 +72,10 @@ export const wagmiConfig = createConfig({
     // 2) Prefer Coinbase/Base injected provider if present
     injected({ target: "coinbaseWallet", shimDisconnect: true }),
 
-    // 3) Full RainbowKit set for web (MetaMask, Coinbase Wallet SDK, WalletConnect, etc.)
+    // 3) Full RainbowKit set for web
     ...rkConnectors,
   ],
 
-  // ✅ This is why we needed cookieToInitialState in layout.tsx
-  ssr: true,
-  storage: createStorage({ storage: cookieStorage }),
+  // ✅ Critical: avoid SSR cookie hydration (fixes the /_not-found build crash)
+  ssr: false,
 });
