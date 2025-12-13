@@ -6,11 +6,6 @@ import type { Metadata, Viewport } from "next";
 import MiniAppBoot from "@/components/MiniAppBoot";
 import AppReady from "@/components/AppReady";
 
-/** ✅ wagmi cookie hydration (for your wagmi version) */
-import { headers } from "next/headers";
-import { cookieToInitialState } from "wagmi";
-import { wagmiConfig } from "@/lib/wallet";
-
 /* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
   const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -67,10 +62,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // ✅ IMPORTANT: your wagmi version expects a cookie header string (or null),
-  // not the ReadonlyRequestCookies object.
-  const initialState = cookieToInitialState(wagmiConfig, headers().get("cookie"));
-
   return (
     <html lang="en">
       <head>
@@ -128,8 +119,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MiniAppBoot />
         <AppReady />
 
-        {/* ✅ PASS initialState so wagmi + RainbowKit agree across all pages */}
-        <Providers initialState={initialState}>{children}</Providers>
+        {/* ✅ Single client provider tree */}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
