@@ -1,5 +1,4 @@
 // lib/wallet.ts
-
 import { http, cookieStorage, createStorage, createConfig } from "wagmi";
 import { base } from "viem/chains";
 
@@ -27,15 +26,14 @@ const WC_PROJECT_ID =
   "";
 
 /** ------------ RPC selection (prefer browser/CORS friendly) ------------ */
-const DIRECT_URL  = process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim();
+const DIRECT_URL = process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim();
 const ALCHEMY_KEY = process.env.NEXT_PUBLIC_ALCHEMY_KEY?.trim();
-const INFURA_KEY  = process.env.NEXT_PUBLIC_INFURA_KEY?.trim();
+const INFURA_KEY = process.env.NEXT_PUBLIC_INFURA_KEY?.trim();
 
 const RPC_URL =
   DIRECT_URL ||
   (ALCHEMY_KEY ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}` : "") ||
-  (INFURA_KEY  ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : "") ||
-  // public fallback that usually allows browser CORS:
+  (INFURA_KEY ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : "") ||
   "https://rpc.ankr.com/base";
 
 /** ------------ RainbowKit wallet groups ------------ */
@@ -64,7 +62,7 @@ export const wagmiConfig = createConfig({
   chains: [base],
   transports: {
     [base.id]: http(RPC_URL, {
-      batch: true, // fewer requests; friendlier to mobile/webviews
+      batch: true,
     }),
   },
   connectors: [
@@ -77,6 +75,8 @@ export const wagmiConfig = createConfig({
     // 3) Full RainbowKit set for web (MetaMask, Coinbase Wallet SDK, WalletConnect, etc.)
     ...rkConnectors,
   ],
+
+  // ✅ This is why we needed cookieToInitialState in layout.tsx
   ssr: true,
-  storage: createStorage({ storage: cookieStorage }), // nice UX across reloads
+  storage: createStorage({ storage: cookieStorage }),
 });
