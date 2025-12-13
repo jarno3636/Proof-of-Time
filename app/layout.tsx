@@ -6,8 +6,8 @@ import type { Metadata, Viewport } from "next";
 import MiniAppBoot from "@/components/MiniAppBoot";
 import AppReady from "@/components/AppReady";
 
-// ✅ ADD THESE:
-import { cookies } from "next/headers";
+/** ✅ wagmi cookie hydration (for your wagmi version) */
+import { headers } from "next/headers";
 import { cookieToInitialState } from "wagmi";
 import { wagmiConfig } from "@/lib/wallet";
 
@@ -58,10 +58,7 @@ export const metadata: Metadata = {
     images: ["/share.PNG"],
   },
   icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/icon.png", type: "image/png", sizes: "32x32" },
-    ],
+    icon: [{ url: "/favicon.ico" }, { url: "/icon.png", type: "image/png", sizes: "32x32" }],
     apple: [{ url: "/apple-touch-icon.png" }],
   },
   themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
@@ -70,8 +67,9 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // ✅ IMPORTANT: hydrate wagmi from cookies for SSR + cookieStorage
-  const initialState = cookieToInitialState(wagmiConfig, cookies());
+  // ✅ IMPORTANT: your wagmi version expects a cookie header string (or null),
+  // not the ReadonlyRequestCookies object.
+  const initialState = cookieToInitialState(wagmiConfig, headers().get("cookie"));
 
   return (
     <html lang="en">
@@ -130,7 +128,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MiniAppBoot />
         <AppReady />
 
-        {/* ✅ PASS initialState */}
+        {/* ✅ PASS initialState so wagmi + RainbowKit agree across all pages */}
         <Providers initialState={initialState}>{children}</Providers>
       </body>
     </html>
