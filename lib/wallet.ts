@@ -1,5 +1,4 @@
 // lib/wallet.ts
-"use client";
 
 import { http, cookieStorage, createStorage, createConfig } from "wagmi";
 import { base } from "viem/chains";
