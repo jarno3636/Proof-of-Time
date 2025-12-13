@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, type State } from "wagmi";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { base } from "wagmi/chains";
+
 import { wagmiConfig } from "@/lib/wallet";
 
 const qc = new QueryClient();
