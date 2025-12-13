@@ -1,9 +1,15 @@
+// app/layout.tsx
 import "../styles/globals.css";
 import Providers from "./providers";
 import { Cinzel } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import MiniAppBoot from "@/components/MiniAppBoot";
 import AppReady from "@/components/AppReady";
+
+// ✅ ADD THESE:
+import { cookies } from "next/headers";
+import { cookieToInitialState } from "wagmi";
+import { wagmiConfig } from "@/lib/wallet";
 
 /* ---------- Resolve absolute site URL (server-safe) ---------- */
 function getSiteUrl() {
@@ -43,18 +49,19 @@ export const metadata: Metadata = {
     description: "Your longest-held tokens on Base. Time > hype.",
     url: site,
     siteName: "Proof of Time",
-    images: [
-      { url: "/share.PNG", width: 1200, height: 630, alt: "Proof of Time" }, // ✅ Updated
-    ],
+    images: [{ url: "/share.PNG", width: 1200, height: 630, alt: "Proof of Time" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Proof of Time",
     description: "Your longest-held tokens on Base. Time > hype.",
-    images: ["/share.PNG"], // ✅ Updated
+    images: ["/share.PNG"],
   },
   icons: {
-    icon: [{ url: "/favicon.ico" }, { url: "/icon.png", type: "image/png", sizes: "32x32" }],
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+    ],
     apple: [{ url: "/apple-touch-icon.png" }],
   },
   themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0b0e14" }],
@@ -63,6 +70,9 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // ✅ IMPORTANT: hydrate wagmi from cookies for SSR + cookieStorage
+  const initialState = cookieToInitialState(wagmiConfig, cookies());
+
   return (
     <html lang="en">
       <head>
@@ -74,7 +84,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* ✅ Farcaster Mini-App meta */}
         <meta name="x-miniapp-name" content="Proof of Time" />
-        <meta name="x-miniapp-image" content={`${site}/share.PNG`} /> {/* ✅ Updated */}
+        <meta name="x-miniapp-image" content={`${site}/share.PNG`} />
         <meta name="x-miniapp-url" content={site} />
 
         {/* Ultra-early MiniApp ready ping + retries */}
@@ -92,7 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     try { window.Farcaster?.mini?.sdk?.actions?.ready?.(); } catch(e) {}
     attempts++; if (attempts >= maxAttempts) stop();
   }
-  function stop(){ done = true; try{ clearInterval(iv); }catch(_){} 
+  function stop(){ done = true; try{ clearInterval(iv); }catch(_){}
     window.removeEventListener('visibilitychange', onVis);
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('pageshow', onPageShow);
@@ -112,12 +122,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
+
       <body className={`${cinzel.className} bg-[#0b0e14] text-zinc-200`}>
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(80%_60%_at_50%_-20%,rgba(187,164,106,.15),transparent),radial-gradient(60%_40%_at_-10%_110%,rgba(255,255,255,.05),transparent)]" />
+
         {/* Client boot + ready ping */}
         <MiniAppBoot />
         <AppReady />
-        <Providers>{children}</Providers>
+
+        {/* ✅ PASS initialState */}
+        <Providers initialState={initialState}>{children}</Providers>
       </body>
     </html>
   );
