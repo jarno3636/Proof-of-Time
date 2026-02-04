@@ -1,12 +1,6 @@
 // lib/data.ts
-import { Balance, HexAddr, Transfer } from "./types";
-import {
-  createPublicClient,
-  http,
-  decodeEventLog,
-  Hex,
-  getAddress,
-} from "viem";
+import type { Balance, HexAddr, Transfer } from "./types";
+import { createPublicClient, http, decodeEventLog, Hex, getAddress } from "viem";
 import type { AbiEvent } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
@@ -17,10 +11,7 @@ const INFURA_KEY = process.env.INFURA_API_KEY || "";
 const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || "";
 const SEED_ENV = (process.env.BASE_SEED_TOKENS || "").trim();
 
-/**
- * Proof of Time (protocol token)
- * Always tracked even with no transfers
- */
+/** Proof of Time (protocol token) always tracked */
 const POT_TOKEN = "0xe4d22a9af4e14fdf70795dd9c9531295095f0cb6";
 
 const DEFAULT_SEEDS = [
@@ -36,25 +27,17 @@ const SEED_TOKENS: HexAddr[] = [
 
 /* ───────────────────── RPC clients ───────────────────── */
 
-const INFURA_URL = INFURA_KEY
-  ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}`
-  : null;
-
+const INFURA_URL = INFURA_KEY ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : null;
 const PUBLIC_URL = "https://mainnet.base.org";
 
 function makeClient(url: string) {
-  return createPublicClient({
-    chain: base,
-    transport: http(url, { retryCount: 2 }),
-  });
+  return createPublicClient({ chain: base, transport: http(url, { retryCount: 2 }) });
 }
 
 const clientPrimary = makeClient(INFURA_URL ?? PUBLIC_URL);
 const clientFallback = makeClient(PUBLIC_URL);
 
-async function withFallback<T>(
-  call: (c: ReturnType<typeof makeClient>) => Promise<T>
-): Promise<T> {
+async function withFallback<T>(call: (c: ReturnType<typeof makeClient>) => Promise<T>): Promise<T> {
   try {
     return await call(clientPrimary);
   } catch {
@@ -88,10 +71,7 @@ const toLower = (x: string) => x.toLowerCase();
 
 /* ───────────────────── Transfers (Etherscan fast path) ───────────────────── */
 
-export async function fetchTransfersViaEtherscan(
-  address: HexAddr,
-  maxPages = 10
-): Promise<Transfer[]> {
+export async function fetchTransfersViaEtherscan(address: HexAddr, maxPages = 10): Promise<Transfer[]> {
   if (!ETHERSCAN_KEY) return [];
 
   const out: Transfer[] = [];
@@ -99,7 +79,7 @@ export async function fetchTransfersViaEtherscan(
 
   while (page <= maxPages) {
     const url = new URL("https://api.etherscan.io/v2/api");
-    url.searchParams.set("chainid", "8453");
+    url.searchParams.set("chainid", "8453"); // Base
     url.searchParams.set("module", "account");
     url.searchParams.set("action", "tokentx");
     url.searchParams.set("address", address);
@@ -116,18 +96,22 @@ export async function fetchTransfersViaEtherscan(
     if (!list.length) break;
 
     for (const r of list) {
-      const token = toLower(r.contractAddress);
+      const token = toLower(String(r.contractAddress || ""));
       if (!token.startsWith("0x")) continue;
 
+      const symRaw = String(r.tokenSymbol || "").trim();
+      const sym = symRaw && symRaw.toUpperCase() !== "TKN" ? symRaw : undefined;
+
+      const dec = Number(r.tokenDecimal ?? 18);
       out.push({
         token: token as HexAddr,
-        from: toLower(r.from) as HexAddr,
-        to: toLower(r.to) as HexAddr,
+        from: toLower(String(r.from)) as HexAddr,
+        to: toLower(String(r.to)) as HexAddr,
         value: BigInt(r.value ?? "0"),
         block: Number(r.blockNumber),
         ts: Number(r.timeStamp),
-        symbol: r.tokenSymbol || "TKN",
-        decimals: Number(r.tokenDecimal ?? 18),
+        symbol: sym,
+        decimals: Number.isFinite(dec) ? dec : 18,
       });
     }
 
@@ -192,9 +176,7 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
           to: toLower(args.to) as HexAddr,
           value: args.value,
           block: Number(bn),
-          ts: 0, // hydrated below
-          symbol: "TKN",
-          decimals: 18,
+          ts: 0, // hydrate below
         });
       } catch {}
     }
@@ -203,13 +185,11 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
     await sleep(LOG_RANGE_SLEEP_MS);
   }
 
-  /* ─── hydrate timestamps (CRITICAL FIX) ─── */
+  // hydrate timestamps
   const blockTimeMap = new Map<number, number>();
   await Promise.all(
     [...blocks].map(async (bn) => {
-      const blk = await withFallback((c) =>
-        c.getBlock({ blockNumber: bn })
-      );
+      const blk = await withFallback((c) => c.getBlock({ blockNumber: bn }));
       blockTimeMap.set(Number(bn), Number(blk.timestamp));
     })
   );
@@ -222,13 +202,13 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
   return transfers;
 }
 
-/* ───────────────────── Balances (RPC, discovered tokens) ───────────────────── */
+/* ───────────────────── Balances (RPC) ───────────────────── */
 
 export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
   const balances: Balance[] = [];
   const tokenSet = new Set<string>(SEED_TOKENS);
 
-  /* discover tokens from transfers if needed */
+  // discover tokens from transfers (best-effort)
   const txs = await fetchTransfersBase(address).catch(() => []);
   for (const t of txs) tokenSet.add(t.token);
 
@@ -256,7 +236,7 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
             functionName: "symbol",
           })),
         })
-      ),
+      ).catch(() => [] as any[]),
       withFallback((c) =>
         c.multicall({
           contracts: chunk.map((t) => ({
@@ -265,17 +245,23 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
             functionName: "decimals",
           })),
         })
-      ),
+      ).catch(() => [] as any[]),
     ]);
 
     for (let j = 0; j < chunk.length; j++) {
       const raw = (bal[j] as any)?.result as bigint | undefined;
       if (!raw || raw === 0n) continue;
 
+      const symRes = (sym[j] as any)?.result as string | undefined;
+      const decRes = (dec[j] as any)?.result as number | bigint | undefined;
+
+      const decimals =
+        typeof decRes === "bigint" ? Number(decRes) : typeof decRes === "number" ? decRes : 18;
+
       balances.push({
         token: chunk[j],
-        symbol: ((sym[j] as any)?.result as string) ?? "TKN",
-        decimals: Number((dec[j] as any)?.result ?? 18),
+        symbol: symRes && symRes.toUpperCase() !== "TKN" ? symRes : undefined,
+        decimals,
         raw,
       });
     }
@@ -288,27 +274,23 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
 
 /* ───────────────────── Prices (DeFiLlama) ───────────────────── */
 
-export async function fetchPriceUSDMap(
-  tokens: HexAddr[]
-): Promise<Record<string, number>> {
+export async function fetchPriceUSDMap(tokens: HexAddr[]): Promise<Record<string, number>> {
   const uniq = [...new Set(tokens.map((t) => t.toLowerCase()))];
   if (!uniq.length) return {};
 
   const res = await fetch(
-    `https://coins.llama.fi/prices/current/${uniq
-      .map((a) => `base:${a}`)
-      .join(",")}`
-  );
-  if (!res.ok) return {};
+    `https://coins.llama.fi/prices/current/${uniq.map((a) => `base:${a}`).join(",")}`
+  ).catch(() => null);
+
+  if (!res || !res.ok) return {};
 
   const json = await res.json().catch(() => ({}));
   const out: Record<string, number> = {};
 
-  for (const [k, v] of Object.entries(json.coins || {})) {
-    const addr = k.split(":")[1];
-    if (addr && typeof (v as any).price === "number") {
-      out[addr] = (v as any).price;
-    }
+  for (const [k, v] of Object.entries((json as any).coins || {})) {
+    const addr = String(k).split(":")[1]?.toLowerCase();
+    const price = (v as any)?.price;
+    if (addr && typeof price === "number") out[addr] = price;
   }
 
   return out;
