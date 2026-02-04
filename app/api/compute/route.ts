@@ -1,36 +1,83 @@
 // app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import {
-  fetchBalancesBase,
-  fetchPriceUSDMap,
-  fetchTransfersViaEtherscan, // fast path
-  fetchTransfersBase,          // fallback
-} from "@/lib/data";
+import { createClient } from "@supabase/supabase-js";
 import { computePerTokenStats } from "@/lib/proofOfTime";
 import { Balance, HexAddr, PerTokenStats } from "@/lib/types";
-import { createClient } from "@supabase/supabase-js";
+import { Alchemy, Network, AssetTransfersCategory } from "alchemy-sdk";
 
-/* ---------------- Helpers ---------------- */
+/* ───────────────────── Alchemy Client ───────────────────── */
+
+const alchemy = new Alchemy({
+  apiKey: process.env.ALCHEMY_API_KEY!,
+  network: Network.BASE_MAINNET,
+});
+
+/* ───────────────────── Helpers ───────────────────── */
 
 function isHexAddress(s: string): s is HexAddr {
   return /^0x[a-fA-F0-9]{40}$/.test(s);
 }
 
-/* ---------------- POST /api/compute ---------------- */
-// Body: { "address": "0x..." } or ?address=0x...
+/* ───────────────────── Data Fetchers (Alchemy) ───────────────────── */
+
+async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
+  const res = await alchemy.core.getTokenBalances(address);
+  const out: Balance[] = [];
+
+  for (const tb of res.tokenBalances) {
+    if (!tb.tokenBalance || tb.tokenBalance === "0") continue;
+
+    const meta = await alchemy.core.getTokenMetadata(tb.contractAddress);
+
+    out.push({
+      token: tb.contractAddress.toLowerCase() as HexAddr,
+      symbol: meta.symbol || "TKN",
+      decimals: meta.decimals ?? 18,
+      raw: BigInt(tb.tokenBalance),
+    });
+  }
+
+  return out;
+}
+
+async function fetchTransfersAlchemy(address: HexAddr) {
+  const res = await alchemy.core.getAssetTransfers({
+    fromAddress: address,
+    toAddress: address,
+    category: [AssetTransfersCategory.ERC20],
+    withMetadata: true,
+    maxCount: 10000,
+  });
+
+  return res.transfers
+    .filter((t) => t.rawContract?.address)
+    .map((t) => ({
+      token: t.rawContract.address!.toLowerCase() as HexAddr,
+      from: t.from!.toLowerCase() as HexAddr,
+      to: t.to!.toLowerCase() as HexAddr,
+      value: BigInt(t.rawContract.value || "0"),
+      block: parseInt(t.blockNum, 16),
+      ts: Math.floor(
+        new Date(t.metadata!.blockTimestamp).getTime() / 1000
+      ),
+      symbol: t.asset || "TKN",
+      decimals: Number(t.rawContract.decimal ?? 18),
+    }));
+}
+
+/* ───────────────────── POST /api/compute ───────────────────── */
+
 export async function POST(req: NextRequest) {
   try {
-    // Parse address from JSON body first, otherwise from query (?address=)
+    // Parse address
     let raw: string | undefined;
     try {
       const j = await req.json().catch(() => ({}));
       raw = (j?.address as string | undefined)?.trim();
-    } catch {
-      // ignore body parse error and fall back to query
-    }
+    } catch {}
+
     if (!raw) {
-      const q = new URL(req.url).searchParams.get("address") || "";
-      raw = q.trim() || undefined;
+      raw = new URL(req.url).searchParams.get("address")?.trim();
     }
 
     if (!raw || !isHexAddress(raw)) {
@@ -40,33 +87,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Normalize to lowercase for consistent storage & lookups
     const address = raw.toLowerCase() as HexAddr;
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_KEY;
-    if (!url || !key) {
+    // Supabase
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
-        { error: "Supabase env missing (URL or SERVICE_KEY)" },
+        { error: "Supabase env missing" },
         { status: 500 }
       );
     }
-    const supabase = createClient(url, key);
 
-    // ---------- Transfers ----------
-    // Try fast Etherscan path, then fall back to on-chain if needed.
-    let transfers = await fetchTransfersViaEtherscan(address).catch(() => []);
-    if (!transfers.length) {
-      transfers = await fetchTransfersBase(address).catch(() => []);
-    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ---------- Balances ----------
-    const balances = await fetchBalancesBase(address).catch(() => []);
-
-    // Ensure wallet record exists even if no balances
+    // Always ensure wallet row exists
     await supabase.from("wallets").upsert({ address }).throwOnError();
 
-    if (!balances?.length) {
+    /* ───────────── Fresh chain data (Alchemy) ───────────── */
+
+    const [balances, transfers] = await Promise.all([
+      fetchBalancesAlchemy(address),
+      fetchTransfersAlchemy(address),
+    ]);
+
+    if (!balances.length) {
       return NextResponse.json({
         address,
         count: 0,
@@ -74,29 +120,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ---------- Prices ----------
-    const priceMap =
-      (await fetchPriceUSDMap(balances.map((b) => b.token)).catch(
-        () => ({}) as Record<string, number>
-      )) || {};
+    /* ───────────── Compute stats ───────────── */
 
-    // ---------- Compute per-token stats ----------
     const stats: PerTokenStats[] = [];
-    for (const b of balances as Balance[]) {
+
+    for (const b of balances) {
       const s = computePerTokenStats(
         address,
         b.token,
         transfers,
         b,
-        priceMap[b.token.toLowerCase()]
+        undefined // price optional (can add later)
       );
       if (s) stats.push(s);
     }
 
-    // ---------- Persist ----------
+    /* ───────────── Persist (overwrite cache) ───────────── */
+
     if (stats.length) {
       const rows = stats.map((s) => ({
-        // ✅ store lowercased keys for reliable queries
         address,
         token_address: s.token_address.toLowerCase(),
         symbol: s.symbol,
@@ -127,7 +169,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ address, count: stats.length });
   } catch (err: any) {
-    console.error("compute error:", err?.message || err);
+    console.error("compute error:", err);
     return NextResponse.json(
       { error: err?.message || "Unknown compute error" },
       { status: 500 }
@@ -135,42 +177,45 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* ---------------- GET /api/compute ---------------- */
+/* ───────────────────── GET /api/compute ───────────────────── */
+
 export async function GET() {
   return new Response(
     `<!doctype html>
-<html><body style="font-family:system-ui;padding:24px;background:#0B0E14;color:#EDEEF2">
-  <h1>Proof of Time – Compute</h1>
-  <p>Enter a Base address and we'll compute your relic stats. (This GET page sends a POST.)</p>
-  <form onsubmit="event.preventDefault(); run();">
-    <input id="addr" placeholder="0x..." style="padding:8px;border-radius:8px;background:#1a1f2a;color:white;width:420px">
-    <button id="btn" style="padding:8px 12px;margin-left:8px;border-radius:8px;">Compute</button>
-  </form>
-  <pre id="out" style="margin-top:16px;white-space:pre-wrap;"></pre>
-  <script>
-    async function run(){
-      const btn = document.getElementById('btn');
-      const out = document.getElementById('out');
-      const address = (document.getElementById('addr').value||'').trim();
-      out.textContent = '⏳ Computing for ' + address + ' ...';
-      btn.disabled = true;
-      try {
-        const r = await fetch('', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ address })
-        });
-        const j = await r.json().catch(()=>({error:'non-json'}));
-        out.textContent = JSON.stringify(j,null,2);
-        if (j && j.address) location.href = '/relic/' + j.address; // use normalized address from server
-      } catch (e) {
-        out.textContent = '❌ Request error: ' + (e && e.message ? e.message : e);
-      } finally {
-        btn.disabled = false;
-      }
-    }
-  </script>
-</body></html>`,
+<html>
+<body style="font-family:system-ui;padding:24px;background:#0B0E14;color:#EDEEF2">
+<h1>Proof of Time – Compute</h1>
+<p>Enter a Base address and compute relic stats.</p>
+<form onsubmit="event.preventDefault(); run();">
+  <input id="addr" placeholder="0x..." style="padding:8px;border-radius:8px;background:#1a1f2a;color:white;width:420px">
+  <button id="btn" style="padding:8px 12px;margin-left:8px;border-radius:8px;">Verify</button>
+</form>
+<pre id="out" style="margin-top:16px;"></pre>
+<script>
+async function run(){
+  const btn = document.getElementById('btn');
+  const out = document.getElementById('out');
+  const address = document.getElementById('addr').value.trim();
+  btn.disabled = true;
+  out.textContent = '⏳ Verifying…';
+  try {
+    const r = await fetch('', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ address })
+    });
+    const j = await r.json();
+    out.textContent = JSON.stringify(j,null,2);
+    if (j.address) location.href = '/relic/' + j.address;
+  } catch(e){
+    out.textContent = '❌ Error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>`,
     { headers: { "content-type": "text/html; charset=utf-8" } }
   );
 }
