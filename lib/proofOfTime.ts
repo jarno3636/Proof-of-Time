@@ -1,4 +1,3 @@
-// lib/proofOfTime.ts
 import { Balance, HexAddr, PerTokenStats, Transfer } from "./types";
 
 const SECS_PER_DAY = 86400;
@@ -44,6 +43,13 @@ export function computePerTokenStats(
   priceUSD: number | undefined,
   nowSec = Math.floor(Date.now() / 1000)
 ): PerTokenStats | null {
+  // ── balance gate (fixes PoT + genesis tokens)
+  if (!balance || balance.raw === 0n) return null;
+
+  const balanceNow = formatUnits(balance.raw, balance.decimals);
+  const usdNow = (priceUSD ?? 0) * balanceNow;
+  if (usdNow < DUST_USD) return null;
+
   const addr = toLower(address);
   const tokenL = toLower(token);
 
@@ -51,19 +57,7 @@ export function computePerTokenStats(
     (t) => toLower(t.token) === tokenL
   );
 
-  // ─────────────────────────────
-  // Balance gate (PoT fix)
-  // ─────────────────────────────
-  if (!balance || balance.raw === 0n) return null;
-
-  const balanceNow = formatUnits(balance.raw, balance.decimals);
-  const usdNow = (priceUSD ?? 0) * balanceNow;
-
-  if (usdNow < DUST_USD) return null;
-
-  // ─────────────────────────────
-  // Symbol resolution (TKN fix)
-  // ─────────────────────────────
+  // ── symbol resolution (kills TKN)
   const transferSymbol = txs.find(
     (t) => t.symbol && t.symbol !== "TKN"
   )?.symbol;
@@ -75,10 +69,7 @@ export function computePerTokenStats(
       ? transferSymbol
       : token.slice(2, 6).toUpperCase(); // safe fallback
 
-  // ─────────────────────────────
-  // If no transfers, treat as freshly acquired
-  // (important for new / genesis tokens like PoT)
-  // ─────────────────────────────
+  // ── no transfers (genesis / PoT)
   if (!txs.length) {
     return {
       token_address: token,
@@ -96,9 +87,6 @@ export function computePerTokenStats(
     };
   }
 
-  // ─────────────────────────────
-  // Original transfer-based logic
-  // ─────────────────────────────
   const byBlock = groupByBlock(txs);
 
   let firstAcquired: number | null = null;
@@ -109,7 +97,6 @@ export function computePerTokenStats(
 
   for (const [, blockTxs] of byBlock) {
     blockTxs.sort((a, b) => a.ts - b.ts);
-
     let net = 0n;
     let blockTs = blockTxs[0].ts;
 
@@ -123,7 +110,6 @@ export function computePerTokenStats(
       if (!firstAcquired && toMine && (net > 0n || running + net > 0n)) {
         firstAcquired = t.ts;
       }
-
       blockTs = t.ts;
     }
 
@@ -158,9 +144,6 @@ export function computePerTokenStats(
     Math.floor((nowSec - noSellSince) / SECS_PER_DAY)
   );
 
-  const timeScore =
-    continuousHoldDays * Math.log(balanceNow + 1);
-
   return {
     token_address: token,
     symbol: resolvedSymbol,
@@ -177,7 +160,7 @@ export function computePerTokenStats(
     never_sold: !everSold,
     no_sell_streak_days: noSellStreakDays,
     balance_numeric: balanceNow,
-    time_score: timeScore,
+    time_score: continuousHoldDays * Math.log(balanceNow + 1),
   };
 }
 
