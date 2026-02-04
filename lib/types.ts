@@ -1,5 +1,4 @@
 // lib/types.ts
-
 export type HexAddr = `0x${string}`;
 
 export type Transfer = {
@@ -15,23 +14,23 @@ export type Transfer = {
 
 export type Balance = {
   token: HexAddr;
-  symbol: string;
+  symbol?: string; // may be missing / unreliable
   decimals: number;
   raw: bigint;
 };
 
 export type PerTokenStats = {
   token_address: HexAddr;
-  symbol: string;
+  symbol: string | null; // UI should resolve via token_cache
   decimals: number;
 
-  // ⬇️ anchors MAY be null (do not overwrite DB)
+  // anchors MAY be null
   first_acquired_ts: string | null;
   last_full_exit_ts: string | null;
   last_sell_ts: string | null;
   held_since: string | null;
 
-  // ⬇️ derived values may be null until anchored
+  // derived may be null until anchored
   continuous_hold_days: number | null;
   no_sell_streak_days: number | null;
 
