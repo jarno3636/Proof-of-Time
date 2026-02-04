@@ -1,4 +1,3 @@
-// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Balance, HexAddr, PerTokenStats, Transfer } from "@/lib/types";
@@ -10,13 +9,17 @@ import {
   fetchPriceUSDMap,
 } from "@/lib/data";
 
+/* ───────────────── runtime ───────────────── */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const MAX_TOKENS_PER_RUN = 80;
 
-const isHexAddr = (s: string): s is HexAddr => /^0x[a-fA-F0-9]{40}$/.test(s);
+/* ───────────────── helpers ───────────────── */
+
+const isHexAddr = (s: string): s is HexAddr =>
+  /^0x[a-fA-F0-9]{40}$/.test(s);
 
 function safeAddr(x: unknown): HexAddr | null {
   const s = String(x || "").trim();
@@ -24,8 +27,11 @@ function safeAddr(x: unknown): HexAddr | null {
   return s.toLowerCase() as HexAddr;
 }
 
+/* ───────────────── POST ───────────────── */
+
 export async function POST(req: NextRequest) {
   const started = Date.now();
+
   const body = await req.json().catch(() => ({} as any));
   const address = safeAddr((body as any)?.address);
 
@@ -35,48 +41,63 @@ export async function POST(req: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+
   if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.json({ error: "Supabase env missing" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Supabase env missing" },
+      { status: 500 }
+    );
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // 1) balances
+  /* 1️⃣ balances */
   let balances: Balance[] = await fetchBalancesBase(address);
-  if (balances.length > MAX_TOKENS_PER_RUN) balances = balances.slice(0, MAX_TOKENS_PER_RUN);
+  if (balances.length > MAX_TOKENS_PER_RUN) {
+    balances = balances.slice(0, MAX_TOKENS_PER_RUN);
+  }
 
-  // 2) transfers (prefer Etherscan; fallback Base logs)
+  /* 2️⃣ transfers */
   let transfers: Transfer[] = [];
   try {
     transfers = await fetchTransfersViaEtherscan(address);
-    if (!transfers.length) transfers = await fetchTransfersBase(address);
+    if (!transfers.length) {
+      transfers = await fetchTransfersBase(address);
+    }
   } catch {
     transfers = [];
   }
 
-  // 3) prices
-  const priceMap: Record<string, number> = await fetchPriceUSDMap(balances.map((b) => b.token)).catch(
-    () => ({})
-  );
+  /* 3️⃣ prices */
+  const priceMap: Record<string, number> = await fetchPriceUSDMap(
+    balances.map((b) => b.token)
+  ).catch(() => ({}));
 
-  // 4) compute
+  /* 4️⃣ compute */
   const stats: PerTokenStats[] = [];
+
   for (const b of balances) {
     const price = priceMap[b.token.toLowerCase()];
-    const s = computePerTokenStats(address, b.token, transfers, b, price);
+    const s = computePerTokenStats(
+      address,
+      b.token,
+      transfers,
+      b,
+      price
+    );
     if (s) stats.push(s);
   }
 
-  // 5) persist (NO symbol poisoning)
+  /* 5️⃣ persist (CORRECT try/catch) */
   if (stats.length) {
-    await supabase
-      .from("token_holdings")
-      .upsert(
+    try {
+      await supabase.from("token_holdings").upsert(
         stats.map((s) => ({
-          address: address.toLowerCase(),
+          address,
           token_address: s.token_address.toLowerCase(),
           decimals: s.decimals,
-          // store symbol if present but it's optional; UI must resolve via token_cache
+
+          // symbol optional — UI resolves via registry later
           symbol: s.symbol,
 
           first_acquired_ts: s.first_acquired_ts,
@@ -94,8 +115,10 @@ export async function POST(req: NextRequest) {
           last_computed_at: new Date().toISOString(),
         })),
         { onConflict: "address,token_address" }
-      )
-      .catch(() => null);
+      );
+    } catch (err) {
+      console.error("token_holdings upsert failed", err);
+    }
   }
 
   return NextResponse.json({
