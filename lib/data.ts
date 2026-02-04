@@ -18,6 +18,12 @@ const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || "";
 const GOLD_KEY = process.env.COVALENT_API_KEY || "";
 const SEED_ENV = (process.env.BASE_SEED_TOKENS || "").trim();
 
+/**
+ * Proof of Time (protocol token)
+ * Always tracked even if no transfers exist yet.
+ */
+const POT_TOKEN = "0xe4d22a9af4e14fdf70795dd9c9531295095f0cb6";
+
 const DEFAULT_SEEDS = [
   // USDC + WETH (Base)
   "0x833589fCD6EDB6E08f4c7C32D4f41f182e88C0A4",
@@ -27,6 +33,7 @@ const DEFAULT_SEEDS = [
 const SEED_TOKENS: HexAddr[] = [
   ...DEFAULT_SEEDS,
   ...SEED_ENV.split(",").map((s) => s.trim()).filter(Boolean),
+  POT_TOKEN,
 ].map((a) => a.toLowerCase()) as HexAddr[];
 
 // ───────────────────── Option A: RPC with fallback ─────────────────────
@@ -34,19 +41,20 @@ const SEED_TOKENS: HexAddr[] = [
 const INFURA_URL = INFURA_KEY
   ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}`
   : null;
+
 const PUBLIC_URL = "https://mainnet.base.org";
 
 function makeClient(url: string) {
   return createPublicClient({
     chain: base,
-    transport: http(url, { retryCount: 2 }), // small internal retry
+    transport: http(url, { retryCount: 2 }),
   });
 }
 
 const clientPrimary = makeClient(INFURA_URL ?? PUBLIC_URL);
 const clientFallback = makeClient(PUBLIC_URL);
 
-// Generic wrapper: try primary, then fallback
+// Try primary RPC, then fallback
 async function withFallback<T>(
   call: (c: ReturnType<typeof makeClient>) => Promise<T>,
   fallbackValue?: T
@@ -63,14 +71,15 @@ async function withFallback<T>(
   }
 }
 
-// ───────────────────── Option B: simple throttling ─────────────────────
+// ───────────────────── Throttling helpers ─────────────────────
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
-const LOG_RANGE_SLEEP_MS = 120; // between range scans
-const MULTICALL_CHUNK = 75;     // chunk size for multicall
-const MULTICALL_SLEEP_MS = 120; // between chunks
+
+const LOG_RANGE_SLEEP_MS = 120;
+const MULTICALL_CHUNK = 75;
+const MULTICALL_SLEEP_MS = 120;
 
 // ───────────────────────── helpers / constants ─────────────────────────
 
@@ -88,27 +97,21 @@ const transferEvent = {
 } as const satisfies AbiEvent;
 
 const toLower = (x: string) => (x || "").toLowerCase();
-async function safeRead<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
 
-// ───────────── FAST: Transfers via Etherscan v2 (no RPC) ──────────────
+// ───────────── FAST: Transfers via Etherscan v2 ──────────────
 
 export async function fetchTransfersViaEtherscan(
   address: HexAddr,
   maxPages = 10
 ): Promise<Transfer[]> {
   if (!ETHERSCAN_KEY) return [];
+
   const out: Transfer[] = [];
   let page = 1;
 
   while (page <= maxPages) {
     const url = new URL("https://api.etherscan.io/v2/api");
-    url.searchParams.set("chainid", "8453"); // Base mainnet
+    url.searchParams.set("chainid", "8453");
     url.searchParams.set("module", "account");
     url.searchParams.set("action", "tokentx");
     url.searchParams.set("address", address);
@@ -121,6 +124,7 @@ export async function fetchTransfersViaEtherscan(
       () => null
     );
     if (!res || !res.ok) break;
+
     const json: any = await res.json().catch(() => ({}));
     const list: any[] = Array.isArray(json?.result) ? json.result : [];
     if (!list.length) break;
@@ -155,19 +159,20 @@ export async function fetchTransfersViaEtherscan(
   return out;
 }
 
-// ───────────── Etherscan V2 token discovery (many pages) ───────────────
+// ───────────── Etherscan V2 token discovery ───────────────
 
 async function discoverTokensViaEtherscanV2All(
   address: HexAddr,
   maxPages = 25
 ): Promise<HexAddr[]> {
   if (!ETHERSCAN_KEY) return [];
+
   const addrs = new Set<string>();
   let page = 1;
 
   while (page <= maxPages) {
     const url = new URL("https://api.etherscan.io/v2/api");
-    url.searchParams.set("chainid", "8453"); // Base
+    url.searchParams.set("chainid", "8453");
     url.searchParams.set("module", "account");
     url.searchParams.set("action", "tokentx");
     url.searchParams.set("address", address);
@@ -180,6 +185,7 @@ async function discoverTokensViaEtherscanV2All(
       () => null
     );
     if (!res || !res.ok) break;
+
     const json: any = await res.json().catch(() => ({}));
     const list: any[] = Array.isArray(json?.result) ? json.result : [];
     if (!list.length) break;
@@ -191,17 +197,19 @@ async function discoverTokensViaEtherscanV2All(
 
     if (list.length < 1000) break;
     page++;
-    await sleep(80); // throttle Etherscan a bit
+    await sleep(80);
   }
+
   return [...addrs] as HexAddr[];
 }
 
-// ─────────────── GoldRush (Covalent) balances fallback ────────────────
+// ─────────────── GoldRush (Covalent) balances ────────────────
 
 async function discoverViaGoldRush(address: HexAddr): Promise<
   { token: HexAddr; symbol: string; decimals: number; raw: bigint }[]
 > {
   if (!GOLD_KEY) return [];
+
   const urls = [
     `https://api.covalenthq.com/v1/allchains/address/${address}/balances/?chains=8453&key=${GOLD_KEY}`,
     `https://api.covalenthq.com/v1/8453/address/${address}/balances_v2/?nft=false&no-nft-fetch=true&key=${GOLD_KEY}`,
@@ -216,9 +224,11 @@ async function discoverViaGoldRush(address: HexAddr): Promise<
 
     const out: { token: HexAddr; symbol: string; decimals: number; raw: bigint }[] =
       [];
+
     for (const it of items) {
       const addr = (it?.contract_address || it?.address || "").toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(addr)) continue;
+
       const rawStr = String(it?.balance ?? it?.balance_wei ?? "0");
       let raw = 0n;
       try {
@@ -236,26 +246,28 @@ async function discoverViaGoldRush(address: HexAddr): Promise<
 
       out.push({ token: addr as HexAddr, symbol, decimals, raw });
     }
+
     if (out.length) return out;
   }
+
   return [];
 }
 
-// ───────────── On-chain Transfer logs (truth; slower) ────────────────
+// ───────────── On-chain Transfer logs (fallback truth) ────────────────
 
 export async function fetchTransfersBase(
   address: HexAddr
 ): Promise<Transfer[]> {
   const acct = toLower(address) as HexAddr;
   const latest = await withFallback((c) => c.getBlockNumber());
-  const RANGE_SIZE = 200_000n; // adjust if needed
+  const RANGE_SIZE = 200_000n;
+
   let from = 0n;
   const transfers: Transfer[] = [];
 
   while (from <= latest) {
     const to = from + RANGE_SIZE < latest ? from + RANGE_SIZE : latest;
 
-    // viem@2 event filter + fallback RPC
     const [outLogs, inLogs] = await Promise.all([
       withFallback((c) =>
         c.getLogs({
@@ -280,13 +292,12 @@ export async function fetchTransfersBase(
         const decoded = decodeEventLog({
           abi: erc20Abi,
           data: log.data,
-          topics: log.topics as unknown as [
-            `0x${string}`,
-            ...`0x${string}`[]
-          ],
+          topics: log.topics as any,
         });
         if (decoded.eventName !== "Transfer") continue;
+
         const args = decoded.args as { from: Hex; to: Hex; value: bigint };
+
         transfers.push({
           token: toLower(log.address) as HexAddr,
           from: toLower(args.from) as HexAddr,
@@ -297,18 +308,16 @@ export async function fetchTransfersBase(
           symbol: "TKN",
           decimals: 18,
         });
-      } catch {
-        // ignore non-ERC20 "Transfer-like" logs
-      }
+      } catch {}
     }
 
     from = to + 1n;
-    await sleep(LOG_RANGE_SLEEP_MS); // ── throttle between ranges
+    await sleep(LOG_RANGE_SLEEP_MS);
   }
 
-  // attach timestamps (batched)
   const uniqueBlocks = [...new Set(transfers.map((t) => BigInt(t.block)))];
   const blockTimeMap = new Map<number, number>();
+
   await Promise.all(
     uniqueBlocks.map(async (bn) => {
       const blk = await withFallback((c) =>
@@ -317,9 +326,10 @@ export async function fetchTransfersBase(
       if (blk) blockTimeMap.set(Number(bn), Number(blk.timestamp));
     })
   );
-  for (const t of transfers) t.ts = blockTimeMap.get(t.block) ?? 0;
 
+  for (const t of transfers) t.ts = blockTimeMap.get(t.block) ?? 0;
   transfers.sort((a, b) => a.block - b.block || a.ts - b.ts);
+
   return transfers;
 }
 
@@ -328,52 +338,59 @@ export async function fetchTransfersBase(
 export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
   const out: Balance[] = [];
 
-  // 1) GoldRush (usually complete & fast)
+  // 1) GoldRush
   const gr = await discoverViaGoldRush(address);
   const grMap = new Map(gr.map((x) => [x.token, x]));
+
   for (const x of gr) {
-    out.push({ token: x.token, symbol: x.symbol, decimals: x.decimals, raw: x.raw });
+    out.push({
+      token: x.token,
+      symbol: x.symbol,
+      decimals: x.decimals,
+      raw: x.raw,
+    });
   }
 
-  // 2) Etherscan discovery (find tokens we touched)
+  // 2) Discover tokens via Etherscan
   const tokenSet = new Set<string>(gr.map((x) => x.token));
   const es = await discoverTokensViaEtherscanV2All(address);
   for (const a of es) tokenSet.add(a.toLowerCase());
 
-  // 3) Seeds (USDC/WETH etc.)
+  // 3) Seeds (includes PoT)
   for (const a of SEED_TOKENS) tokenSet.add(a);
 
   let candidates = [...tokenSet] as HexAddr[];
 
-  // If we still have *no* candidates, do an on-chain discovery pass as a last resort.
+  // Fallback discovery
   if (!candidates.length) {
     const txs = await fetchTransfersBase(address);
     candidates = [...new Set(txs.map((t) => t.token))] as HexAddr[];
   }
 
-  // 4) On-chain reads for anything GoldRush didn’t cover (chunked + throttled)
+  // 4) On-chain reads
   const toRead = candidates.filter((t) => !grMap.has(t));
+
   for (let i = 0; i < toRead.length; i += MULTICALL_CHUNK) {
     const chunk = toRead.slice(i, i + MULTICALL_CHUNK);
 
     const balanceCalls = chunk.map((token) => ({
-      address: token as `0x${string}`,
+      address: token,
       abi: erc20Abi,
       functionName: "balanceOf",
       args: [address],
-    }) as const);
+    })) as const;
 
     const symbolCalls = chunk.map((token) => ({
-      address: token as `0x${string}`,
+      address: token,
       abi: erc20Abi,
       functionName: "symbol",
-    }) as const);
+    })) as const;
 
     const decimalsCalls = chunk.map((token) => ({
-      address: token as `0x${string}`,
+      address: token,
       abi: erc20Abi,
       functionName: "decimals",
-    }) as const);
+    })) as const;
 
     const [balancesRes, symbolsRes, decimalsRes] = await Promise.all([
       withFallback((c) => c.multicall({ contracts: balanceCalls })).catch(() => []),
@@ -385,8 +402,10 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
       const token = chunk[j];
       const raw = (balancesRes?.[j] as any)?.result as bigint | undefined;
       if (!raw || raw === 0n) continue;
+
       const symbol = ((symbolsRes?.[j] as any)?.result as string) ?? "TKN";
       const decimals = Number(((decimalsRes?.[j] as any)?.result as number) ?? 18);
+
       out.push({ token, symbol, decimals, raw });
     }
 
@@ -403,10 +422,13 @@ export async function fetchPriceUSDMap(
 ): Promise<Record<string, number>> {
   const uniq = [...new Set(tokens.map((t) => t.toLowerCase()))];
   if (!uniq.length) return {};
+
   const ids = uniq.map((a) => `base:${a}`).join(",");
   const url = `https://coins.llama.fi/prices/current/${ids}`;
+
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return {};
+
   const json = (await res.json().catch(() => ({}))) as {
     coins?: Record<string, { price: number }>;
   };
@@ -414,7 +436,10 @@ export async function fetchPriceUSDMap(
   const out: Record<string, number> = {};
   for (const [key, val] of Object.entries(json.coins || {})) {
     const addrLower = key.split(":")[1]?.toLowerCase();
-    if (addrLower && typeof val.price === "number") out[addrLower] = val.price;
+    if (addrLower && typeof val.price === "number") {
+      out[addrLower] = val.price;
+    }
   }
+
   return out;
 }
