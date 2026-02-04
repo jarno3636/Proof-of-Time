@@ -74,6 +74,7 @@ async function resolveTokenMeta(
 ): Promise<{ symbol: string; decimals: number }> {
   const tokenKey = token.toLowerCase();
 
+  /* 1️⃣ token_cache */
   try {
     const { data } = await supabase
       .from("token_cache")
@@ -89,6 +90,7 @@ async function resolveTokenMeta(
     }
   } catch {}
 
+  /* 2️⃣ Alchemy */
   if (alchemy) {
     try {
       const meta = await withTimeout(
@@ -114,6 +116,7 @@ async function resolveTokenMeta(
     } catch {}
   }
 
+  /* 3️⃣ On-chain */
   for (const client of viemClients) {
     try {
       const [sym, dec] = await Promise.all([
@@ -155,6 +158,7 @@ async function resolveTokenMeta(
     } catch {}
   }
 
+  /* 4️⃣ deterministic fallback */
   const fallback = token.slice(2, 6).toUpperCase();
   await supabase.from("token_cache").upsert({
     token_address: tokenKey,
@@ -197,7 +201,6 @@ async function fetchBalances(
           symbol: "TKN",
           decimals: 18,
         }))
-        // 🔧 FIX: explicit type
         .filter((b: Balance) => b.raw !== 0n);
 
       return { balances, source: "alchemy" };
@@ -245,9 +248,10 @@ export async function POST(req: NextRequest) {
     (await fetchTransfersViaEtherscan(address).catch(() => [])) ||
     (await fetchTransfersBase(address).catch(() => []));
 
-  const priceMap = await fetchPriceUSDMap(
+  // ✅ FIX: ensure this is always indexable
+  const priceMap: Record<string, number> = await fetchPriceUSDMap(
     balances.map((b) => b.token)
-  ).catch(() => ({}));
+  ).catch(() => ({} as Record<string, number>));
 
   const stats: PerTokenStats[] = [];
   for (const b of balances) {
