@@ -152,11 +152,15 @@ export function computePerTokenStats(
 
 export function pickTop3(stats: PerTokenStats[]) {
   return [...stats]
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      const aDays = a.continuous_hold_days ?? 0;
+      const bDays = b.continuous_hold_days ?? 0;
+
+      return (
         b.time_score - a.time_score ||
-        b.continuous_hold_days - a.continuous_hold_days ||
+        bDays - aDays ||
         a.symbol.localeCompare(b.symbol)
-    )
+      );
+    })
     .slice(0, 3);
 }
