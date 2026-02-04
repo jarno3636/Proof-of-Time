@@ -1,7 +1,8 @@
+// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Alchemy, Network } from "alchemy-sdk";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, hexToString } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 
@@ -41,8 +42,7 @@ const viemClients = RPCS.map((url) =>
 
 /* ───────────────── helpers ───────────────── */
 
-const isHex = (s: string): s is HexAddr =>
-  /^0x[a-fA-F0-9]{40}$/.test(s);
+const isHex = (s: string): s is HexAddr => /^0x[a-fA-F0-9]{40}$/.test(s);
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -53,11 +53,71 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-function normalizeSymbol(symbol: unknown, token: string): string {
-  if (typeof symbol === "string" && symbol !== "TKN" && symbol.length > 0) {
-    return symbol;
-  }
+function fallbackSymbol(token: string) {
   return token.slice(2, 6).toUpperCase();
+}
+
+// If symbol looks like our deterministic fallback (4 hex chars), treat it as low-confidence.
+function looksLikeFallback(sym: string, token: string) {
+  return sym.toUpperCase() === fallbackSymbol(token);
+}
+
+function normalizeSymbol(symbol: unknown, token: string): string {
+  if (typeof symbol === "string") {
+    const s = symbol.trim();
+    if (s && s.toUpperCase() !== "TKN") return s;
+  }
+  return fallbackSymbol(token);
+}
+
+const bytes32SymbolAbi = [
+  {
+    type: "function",
+    name: "symbol",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+] as const;
+
+async function readSymbolOnchain(
+  token: HexAddr
+): Promise<string | null> {
+  for (const client of viemClients) {
+    // 1) standard string symbol()
+    try {
+      const sym = await withTimeout(
+        client.readContract({
+          address: token,
+          abi: erc20Abi,
+          functionName: "symbol",
+        }) as Promise<string>,
+        META_TIMEOUT
+      );
+      const cleaned = typeof sym === "string" ? sym.trim() : "";
+      if (cleaned && cleaned.toUpperCase() !== "TKN") return cleaned;
+    } catch {
+      // continue
+    }
+
+    // 2) bytes32 symbol() (common non-standard tokens)
+    try {
+      const sym32 = await withTimeout(
+        client.readContract({
+          address: token,
+          abi: bytes32SymbolAbi,
+          functionName: "symbol",
+        }) as Promise<`0x${string}`>,
+        META_TIMEOUT
+      );
+
+      const decoded = hexToString(sym32, { size: 32 }).replace(/\0/g, "").trim();
+      if (decoded && decoded.toUpperCase() !== "TKN") return decoded;
+    } catch {
+      // continue
+    }
+  }
+  return null;
 }
 
 /* ───────────────── metadata resolution ───────────────── */
@@ -65,6 +125,8 @@ function normalizeSymbol(symbol: unknown, token: string): string {
 type TokenCacheRow = {
   symbol: string | null;
   decimals: number | null;
+  source: string | null;
+  updated_at: string | null;
 };
 
 async function resolveTokenMeta(
@@ -74,78 +136,83 @@ async function resolveTokenMeta(
 ): Promise<{ symbol: string; decimals: number }> {
   const tokenKey = token.toLowerCase();
 
-  // 1️⃣ cache
+  // 1) cache (but ignore low-confidence cached fallbacks so we can improve later)
   try {
     const { data } = await supabase
       .from("token_cache")
-      .select("symbol, decimals")
+      .select("symbol, decimals, source, updated_at")
       .eq("token_address", tokenKey)
       .maybeSingle<TokenCacheRow>();
 
-    if (data && data.decimals != null) {
-      return {
-        symbol: normalizeSymbol(data.symbol, token),
-        decimals: Number(data.decimals) || 18,
-      };
-    }
-  } catch {}
+    if (data?.symbol && data.decimals != null) {
+      const sym = normalizeSymbol(data.symbol, token);
 
-  // 2️⃣ Alchemy
+      // If cache is fallback-ish, treat as miss and try to re-resolve.
+      // This is the main reason you were stuck with $B8D9 etc.
+      if (!looksLikeFallback(sym, token) || (data.source && data.source !== "fallback")) {
+        return { symbol: sym, decimals: Number(data.decimals) || 18 };
+      }
+      // else: continue to try to improve symbol
+    }
+  } catch {
+    // ignore cache read errors
+  }
+
+  // 2) Alchemy metadata
   if (alchemy) {
     try {
-      const meta = await withTimeout(
-        alchemy.core.getTokenMetadata(token),
-        META_TIMEOUT
-      );
-
+      const meta = await withTimeout(alchemy.core.getTokenMetadata(token), META_TIMEOUT);
       const symbol = normalizeSymbol((meta as any)?.symbol, token);
       const decimals =
-        typeof (meta as any)?.decimals === "number"
-          ? (meta as any).decimals
-          : 18;
+        typeof (meta as any)?.decimals === "number" ? (meta as any).decimals : 18;
 
-      await supabase.from("token_cache").upsert({
-        token_address: tokenKey,
-        symbol,
-        decimals,
-        source: "alchemy",
-        updated_at: new Date().toISOString(),
-      });
+      // Only cache Alchemy if it’s not a fallback-ish symbol
+      if (!looksLikeFallback(symbol, token)) {
+        try {
+          await supabase.from("token_cache").upsert({
+            token_address: tokenKey,
+            symbol,
+            decimals,
+            source: "alchemy",
+            updated_at: new Date().toISOString(),
+          });
+        } catch {}
+        return { symbol, decimals };
+      }
+      // If alchemy gives nothing useful, keep going
+    } catch {
+      // continue
+    }
+  }
 
-      return { symbol, decimals };
+  // 3) On-chain symbol/decimals
+  let onchainSymbol: string | null = null;
+  try {
+    onchainSymbol = await readSymbolOnchain(token);
+  } catch {
+    onchainSymbol = null;
+  }
+
+  // decimals: try on-chain (string path already in your earlier code; keep it simple)
+  let decimals = 18;
+  for (const client of viemClients) {
+    try {
+      const dec = await withTimeout(
+        client.readContract({
+          address: token,
+          abi: erc20Abi,
+          functionName: "decimals",
+        }) as Promise<number | bigint>,
+        META_TIMEOUT
+      );
+      decimals = typeof dec === "bigint" ? Number(dec) : typeof dec === "number" ? dec : 18;
+      break;
     } catch {}
   }
 
-  // 3️⃣ on-chain
-  for (const client of viemClients) {
+  if (onchainSymbol) {
+    const symbol = normalizeSymbol(onchainSymbol, token);
     try {
-      const [sym, dec] = await Promise.all([
-        withTimeout(
-          client.readContract({
-            address: token,
-            abi: erc20Abi,
-            functionName: "symbol",
-          } as any),
-          META_TIMEOUT
-        ).catch(() => null),
-        withTimeout(
-          client.readContract({
-            address: token,
-            abi: erc20Abi,
-            functionName: "decimals",
-          } as any),
-          META_TIMEOUT
-        ).catch(() => null),
-      ]);
-
-      const symbol = normalizeSymbol(sym, token);
-      const decimals =
-        typeof dec === "bigint"
-          ? Number(dec)
-          : typeof dec === "number"
-          ? dec
-          : 18;
-
       await supabase.from("token_cache").upsert({
         token_address: tokenKey,
         symbol,
@@ -153,22 +220,23 @@ async function resolveTokenMeta(
         source: "onchain",
         updated_at: new Date().toISOString(),
       });
-
-      return { symbol, decimals };
     } catch {}
+    return { symbol, decimals };
   }
 
-  // 4️⃣ fallback
-  const fallback = token.slice(2, 6).toUpperCase();
-  await supabase.from("token_cache").upsert({
-    token_address: tokenKey,
-    symbol: fallback,
-    decimals: 18,
-    source: "fallback",
-    updated_at: new Date().toISOString(),
-  });
+  // 4) deterministic fallback (cache it, but marked fallback)
+  const fallback = fallbackSymbol(token);
+  try {
+    await supabase.from("token_cache").upsert({
+      token_address: tokenKey,
+      symbol: fallback,
+      decimals,
+      source: "fallback",
+      updated_at: new Date().toISOString(),
+    });
+  } catch {}
 
-  return { symbol: fallback, decimals: 18 };
+  return { symbol: fallback, decimals };
 }
 
 /* ───────────────── balances ───────────────── */
@@ -179,10 +247,7 @@ async function fetchBalances(
 ): Promise<{ balances: Balance[]; source: "alchemy" | "base_backup" }> {
   if (alchemy) {
     try {
-      const res = await withTimeout(
-        alchemy.core.getTokenBalances(address),
-        UPSTREAM_TIMEOUT
-      );
+      const res = await withTimeout(alchemy.core.getTokenBalances(address), UPSTREAM_TIMEOUT);
 
       const list: any[] = Array.isArray((res as any)?.tokenBalances)
         ? (res as any).tokenBalances
@@ -195,18 +260,18 @@ async function fetchBalances(
             typeof t.tokenBalance === "string" &&
             t.tokenBalance !== "0"
         )
-        .map(
-          (t: any): Balance => ({
-            token: t.contractAddress.toLowerCase() as HexAddr,
-            raw: BigInt(t.tokenBalance),
-            symbol: "TKN",
-            decimals: 18,
-          })
-        )
+        .map((t: any): Balance => ({
+          token: String(t.contractAddress).toLowerCase() as HexAddr,
+          raw: BigInt(t.tokenBalance),
+          symbol: "TKN",
+          decimals: 18,
+        }))
         .filter((b: Balance) => b.raw !== 0n);
 
       return { balances, source: "alchemy" };
-    } catch {}
+    } catch {
+      // fallthrough
+    }
   }
 
   return { balances: await fetchBalancesBase(address), source: "base_backup" };
@@ -216,48 +281,67 @@ async function fetchBalances(
 
 export async function POST(req: NextRequest) {
   const started = Date.now();
-  const body = await req.json().catch(() => ({}));
-  const raw = String(body?.address || "").trim();
 
+  const body = await req.json().catch(() => ({}));
+  const raw = String((body as any)?.address || "").trim();
   if (!isHex(raw)) {
     return NextResponse.json({ error: "Invalid address" }, { status: 400 });
   }
-
   const address = raw.toLowerCase() as HexAddr;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json(
+      { error: "Server misconfigured (Supabase env missing)" },
+      { status: 500 }
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   const alchemy =
-    ALCHEMY_KEY && ALCHEMY_KEY.length
+    ALCHEMY_KEY && ALCHEMY_KEY.trim().length
       ? new Alchemy({ apiKey: ALCHEMY_KEY, network: Network.BASE_MAINNET })
       : null;
 
-  let { balances } = await fetchBalances(alchemy, address);
-  if (balances.length > MAX_TOKENS_PER_RUN) {
-    balances = balances.slice(0, MAX_TOKENS_PER_RUN);
+  // balances
+  let { balances, source: sourceBalances } = await fetchBalances(alchemy, address);
+  if (balances.length > MAX_TOKENS_PER_RUN) balances = balances.slice(0, MAX_TOKENS_PER_RUN);
+
+  if (!balances.length) {
+    return NextResponse.json({
+      address,
+      count: 0,
+      note: "No ERC-20 balances detected on Base.",
+      meta: { sourceBalances, elapsedMs: Date.now() - started },
+    });
   }
 
+  // metadata resolve (cached)
   for (const b of balances) {
     const meta = await resolveTokenMeta(supabase, alchemy, b.token);
     b.symbol = meta.symbol;
     b.decimals = meta.decimals;
   }
 
+  // transfers (IMPORTANT: [] is truthy, so don't use ||)
   let transfers: Transfer[] = [];
   try {
-    transfers = await fetchTransfersViaEtherscan(address);
+    transfers = await fetchTransfersViaEtherscan(address).catch(() => []);
     if (!transfers.length) {
-      transfers = await fetchTransfersBase(address);
+      transfers = await fetchTransfersBase(address).catch(() => []);
     }
-  } catch {}
+  } catch {
+    transfers = [];
+  }
 
+  // prices
   const priceMap: Record<string, number> = await fetchPriceUSDMap(
     balances.map((b) => b.token)
-  ).catch(() => ({}));
+  ).catch(() => ({} as Record<string, number>));
 
+  // compute
   const stats: PerTokenStats[] = [];
   for (const b of balances) {
     const price = priceMap[b.token.toLowerCase()];
@@ -268,35 +352,39 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (stats.length) {
-    await supabase.from("token_holdings").upsert(
-      stats.map((s) => ({
-        address,
-        token_address: s.token_address.toLowerCase(),
-        symbol: s.symbol,
-        decimals: s.decimals,
-
-        first_acquired_ts: s.first_acquired_ts,
-        last_full_exit_ts: s.last_full_exit_ts,
-        last_sell_ts: s.last_sell_ts,
-        held_since: s.held_since,
-
-        continuous_hold_days: s.continuous_hold_days,
-        no_sell_streak_days: s.no_sell_streak_days,
-        never_sold: s.never_sold,
-
-        balance_numeric: s.balance_numeric,
-        time_score: s.time_score,
-
-        last_computed_at: new Date().toISOString(),
-      })),
-      { onConflict: "address,token_address" }
-    );
+  // persist (avoid duplicate keys / overwrites)
+  try {
+    if (stats.length) {
+      await supabase.from("token_holdings").upsert(
+        stats.map((s) => ({
+          address,
+          token_address: s.token_address.toLowerCase(),
+          symbol: s.symbol,
+          decimals: s.decimals,
+          first_acquired_ts: s.first_acquired_ts,
+          last_full_exit_ts: s.last_full_exit_ts,
+          last_sell_ts: s.last_sell_ts,
+          held_since: s.held_since,
+          continuous_hold_days: s.continuous_hold_days,
+          no_sell_streak_days: s.no_sell_streak_days,
+          never_sold: s.never_sold,
+          balance_numeric: s.balance_numeric,
+          time_score: s.time_score,
+          last_computed_at: new Date().toISOString(),
+        })),
+        { onConflict: "address,token_address" }
+      );
+    }
+  } catch {
+    // non-fatal
   }
 
   return NextResponse.json({
     address,
     count: stats.length,
-    elapsedMs: Date.now() - started,
+    meta: {
+      sourceBalances,
+      elapsedMs: Date.now() - started,
+    },
   });
 }
