@@ -27,9 +27,6 @@ function formatUnits(raw: bigint, decimals: number) {
 
 /* ───────────────────────── Public API ───────────────────────── */
 
-/**
- * Tier classifier (used by /relic route)
- */
 export function classifyTier(
   days: number
 ): "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian" {
@@ -63,20 +60,15 @@ export function computePerTokenStats(
     (t) => toLower(t.token) === tokenL
   );
 
-  // Resolve symbol (never leave as TKN if we can avoid it)
   const resolvedSymbol =
     balance.symbol && balance.symbol !== "TKN"
       ? balance.symbol
       : txs.find((t) => t.symbol && t.symbol !== "TKN")?.symbol
       ?? token.slice(2, 6).toUpperCase();
 
-  /* ─────────────────────────────
-   * NO TRANSFERS (genesis / PoT)
-   * Treat as continuously held
-   * ───────────────────────────── */
-  if (!txs.length) {
-    const heldDays = 0;
+  /* ───────── No transfers (genesis / PoT) ───────── */
 
+  if (!txs.length) {
     return {
       token_address: token,
       symbol: resolvedSymbol,
@@ -85,15 +77,15 @@ export function computePerTokenStats(
       last_full_exit_ts: null,
       last_sell_ts: null,
       held_since: new Date(nowSec * 1000).toISOString(),
-      continuous_hold_days: heldDays,
-      no_sell_streak_days: heldDays,
+      continuous_hold_days: 0,
+      no_sell_streak_days: 0,
       never_sold: true,
       balance_numeric: balanceNow,
       time_score: 0,
     };
   }
 
-  /* ───────────────────────── Transfers present ───────────────────────── */
+  /* ───────── Transfers present ───────── */
 
   const byBlock = groupByBlock(txs);
 
@@ -134,9 +126,7 @@ export function computePerTokenStats(
     }
   }
 
-  if (!firstAcquired) {
-    firstAcquired = nowSec;
-  }
+  if (!firstAcquired) firstAcquired = nowSec;
 
   const heldSince =
     lastFullExit && lastFullExit > firstAcquired
@@ -176,14 +166,19 @@ export function computePerTokenStats(
 
 /**
  * Used by /api/relic
+ * ✅ Null-safe, build-safe
  */
 export function pickTop3(stats: PerTokenStats[]) {
   return [...stats]
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      const daysA = a.continuous_hold_days ?? 0;
+      const daysB = b.continuous_hold_days ?? 0;
+
+      return (
         b.time_score - a.time_score ||
-        b.continuous_hold_days - a.continuous_hold_days ||
+        daysB - daysA ||
         a.symbol.localeCompare(b.symbol)
-    )
+      );
+    })
     .slice(0, 3);
 }
