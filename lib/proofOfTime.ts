@@ -1,10 +1,12 @@
 // lib/proofOfTime.ts
-import type { Balance, HexAddr, PerTokenStats, Transfer } from "./types";
+import type { Balance, HexAddr, PerTokenStats, Transfer, RelicTier } from "./types";
 
 const SECS_PER_DAY = 86400;
 const DUST_USD = 0.5;
 
-const lower = (x: string) => x.toLowerCase();
+function safeLower<T extends string>(x: T) {
+  return x.toLowerCase() as T;
+}
 
 function formatUnits(raw: bigint, decimals: number) {
   const s = raw.toString().padStart(decimals + 1, "0");
@@ -14,7 +16,7 @@ function formatUnits(raw: bigint, decimals: number) {
   return Number(frac ? `${int}.${frac}` : int);
 }
 
-export function classifyTier(days: number) {
+export function classifyTier(days: number): RelicTier {
   if (days >= 730) return "Obsidian";
   if (days >= 365) return "Platinum";
   if (days >= 180) return "Gold";
@@ -22,46 +24,67 @@ export function classifyTier(days: number) {
   return "Bronze";
 }
 
+function normalizePossibleSymbol(sym: unknown): string | null {
+  if (typeof sym !== "string") return null;
+  const s = sym.trim();
+  if (!s) return null;
+  if (s.toUpperCase() === "TKN") return null;
+
+  // reject obvious garbage like 4-hex “B8D9”
+  if (s.length === 4 && /^[0-9A-F]{4}$/.test(s)) return null;
+
+  // keep reasonable symbols (USDC, WETH, POT, etc.)
+  if (s.length > 24) return null;
+  return s;
+}
+
+/**
+ * Compute holding stats for a token.
+ * Does NOT try to "invent" token symbols.
+ */
 export function computePerTokenStats(
   address: HexAddr,
   token: HexAddr,
   transfersAll: Transfer[],
   balance: Balance,
-  priceUSD?: number,
+  priceUSD: number | undefined,
   nowSec = Math.floor(Date.now() / 1000)
 ): PerTokenStats | null {
   if (!balance || balance.raw === 0n) return null;
 
   const balanceNow = formatUnits(balance.raw, balance.decimals);
-  if (priceUSD != null && balanceNow * priceUSD < DUST_USD) return null;
+  const usdNow = (priceUSD ?? 0) * balanceNow;
 
-  const addr = lower(address);
-  const tokenL = lower(token);
+  // dust filter only for priced tokens
+  if (priceUSD != null && usdNow < DUST_USD) return null;
 
-  const txs = transfersAll.filter((t) => lower(t.token) === tokenL);
+  const addr = safeLower(address);
+  const tokenL = safeLower(token);
 
-  const transferSymbol =
-    txs.find((t) => t.symbol && t.symbol !== "TKN")?.symbol;
+  const txs = transfersAll.filter((t) => safeLower(t.token) === tokenL);
 
-  const resolvedSymbol =
-    balance.symbol && balance.symbol !== "TKN"
-      ? balance.symbol
-      : transferSymbol && transferSymbol !== "TKN"
-      ? transferSymbol
-      : token.slice(2, 6).toUpperCase();
+  // prefer transfer symbol if present (etherscan sometimes has it)
+  const transferSymbol = normalizePossibleSymbol(
+    txs.find((t) => t.symbol && String(t.symbol).toUpperCase() !== "TKN")?.symbol
+  );
 
+  const balanceSymbol = normalizePossibleSymbol(balance.symbol);
+
+  const resolvedSymbol: string | null = balanceSymbol ?? transferSymbol ?? null;
+
+  // No transfers provided → cannot infer anchor; treat as unknown-held
   if (!txs.length) {
     return {
       token_address: token,
       symbol: resolvedSymbol,
       decimals: balance.decimals,
-      first_acquired_ts: new Date(nowSec * 1000).toISOString(),
+      first_acquired_ts: null,
       last_full_exit_ts: null,
       last_sell_ts: null,
-      held_since: new Date(nowSec * 1000).toISOString(),
-      continuous_hold_days: 0,
-      no_sell_streak_days: 0,
+      held_since: null,
+      continuous_hold_days: null,
       never_sold: true,
+      no_sell_streak_days: null,
       balance_numeric: balanceNow,
       time_score: 0,
     };
@@ -69,58 +92,61 @@ export function computePerTokenStats(
 
   const sorted = [...txs].sort((a, b) => a.block - b.block || a.ts - b.ts);
 
-  let running = 0n;
   let firstAcquired: number | null = null;
+  let lastFullExit: number | null = null;
   let lastSell: number | null = null;
-  let lastExit: number | null = null;
   let everSold = false;
 
+  let running = 0n;
+
   for (const t of sorted) {
-    const fromMe = lower(t.from) === addr;
-    const toMe = lower(t.to) === addr;
+    const fromMe = safeLower(t.from) === addr;
+    const toMe = safeLower(t.to) === addr;
+
     if (!fromMe && !toMe) continue;
+    if (fromMe && toMe) continue;
 
     const prev = running;
     if (toMe) running += t.value;
     if (fromMe) running -= t.value;
 
     if (!firstAcquired && prev === 0n && running > 0n) {
-      firstAcquired = t.ts;
+      firstAcquired = t.ts || null;
     }
 
     if (fromMe && !toMe && t.value > 0n) {
-      lastSell = t.ts;
+      lastSell = t.ts || null;
       everSold = true;
     }
 
     if (prev > 0n && running === 0n) {
-      lastExit = t.ts;
+      lastFullExit = t.ts || null;
     }
   }
 
   if (!firstAcquired) firstAcquired = nowSec;
 
-  const heldSince =
-    lastExit && lastExit > firstAcquired ? lastExit : firstAcquired;
+  const heldSinceSec =
+    lastFullExit && lastFullExit > firstAcquired ? lastFullExit : firstAcquired;
 
-  const holdDays = Math.floor((nowSec - heldSince) / SECS_PER_DAY);
-  const noSellDays = Math.floor(
-    (nowSec - (lastSell ?? firstAcquired)) / SECS_PER_DAY
-  );
+  const continuousHoldDays = Math.max(0, Math.floor((nowSec - heldSinceSec) / SECS_PER_DAY));
+
+  const noSellSince = lastSell ?? firstAcquired;
+  const noSellStreakDays = Math.max(0, Math.floor((nowSec - noSellSince) / SECS_PER_DAY));
 
   return {
     token_address: token,
     symbol: resolvedSymbol,
     decimals: balance.decimals,
     first_acquired_ts: new Date(firstAcquired * 1000).toISOString(),
-    last_full_exit_ts: lastExit ? new Date(lastExit * 1000).toISOString() : null,
+    last_full_exit_ts: lastFullExit ? new Date(lastFullExit * 1000).toISOString() : null,
     last_sell_ts: lastSell ? new Date(lastSell * 1000).toISOString() : null,
-    held_since: new Date(heldSince * 1000).toISOString(),
-    continuous_hold_days: holdDays,
-    no_sell_streak_days: noSellDays,
+    held_since: new Date(heldSinceSec * 1000).toISOString(),
+    continuous_hold_days: continuousHoldDays,
     never_sold: !everSold,
+    no_sell_streak_days: noSellStreakDays,
     balance_numeric: balanceNow,
-    time_score: holdDays * Math.log(balanceNow + 1),
+    time_score: continuousHoldDays * Math.log(balanceNow + 1),
   };
 }
 
@@ -129,11 +155,7 @@ export function pickTop3(stats: PerTokenStats[]) {
     .sort((a, b) => {
       const aDays = a.continuous_hold_days ?? 0;
       const bDays = b.continuous_hold_days ?? 0;
-      return (
-        b.time_score - a.time_score ||
-        bDays - aDays ||
-        a.symbol.localeCompare(b.symbol)
-      );
+      return b.time_score - a.time_score || bDays - aDays || String(a.token_address).localeCompare(String(b.token_address));
     })
     .slice(0, 3);
 }
