@@ -1,3 +1,4 @@
+// lib/proofOfTime.ts
 import { Balance, HexAddr, PerTokenStats, Transfer } from "./types";
 
 const SECS_PER_DAY = 86400;
@@ -35,6 +36,16 @@ export function classifyTier(
   return "Bronze";
 }
 
+/**
+ * IMPORTANT BEHAVIOR CHANGE:
+ * - If there are NO transfers for this token, we DO NOT invent timestamps (which would reset on recompute).
+ * - Instead, we return null for timestamp/day fields so the server can preserve existing DB anchors.
+ *
+ * Your /api/compute upsert should map:
+ *   first_acquired_ts: s.first_acquired_ts ?? undefined
+ *   held_since: s.held_since ?? undefined
+ * etc.
+ */
 export function computePerTokenStats(
   address: HexAddr,
   token: HexAddr,
@@ -53,35 +64,41 @@ export function computePerTokenStats(
   const addr = toLower(address);
   const tokenL = toLower(token);
 
-  const txs = transfersAll.filter(
-    (t) => toLower(t.token) === tokenL
-  );
+  const txs = transfersAll.filter((t) => toLower(t.token) === tokenL);
 
-  // ── symbol resolution (kills TKN)
-  const transferSymbol = txs.find(
-    (t) => t.symbol && t.symbol !== "TKN"
-  )?.symbol;
+  // ── symbol resolution (kills TKN as a display default)
+  const transferSymbol = txs.find((t) => t.symbol && t.symbol !== "TKN")?.symbol;
 
   const resolvedSymbol =
     balance.symbol && balance.symbol !== "TKN"
       ? balance.symbol
-      : transferSymbol
+      : transferSymbol && transferSymbol !== "TKN"
       ? transferSymbol
-      : token.slice(2, 6).toUpperCase(); // safe fallback
+      : `0x${token.slice(2, 6).toUpperCase()}`; // safe fallback that is NOT "TKN"
 
-  // ── no transfers (genesis / PoT)
+  // ─────────────────────────────────────────────
+  // NO TRANSFERS (genesis / newly tracked tokens)
+  // DO NOT RESET TIME ANCHORS ON RECOMPUTE.
+  // Return null fields so DB can keep prior anchors.
+  // ─────────────────────────────────────────────
   if (!txs.length) {
     return {
       token_address: token,
       symbol: resolvedSymbol,
       decimals: balance.decimals,
-      first_acquired_ts: new Date(nowSec * 1000).toISOString(),
+
+      // DO NOT set these to "now" (it freezes days-held).
+      // Let DB preserve prior values or leave empty until transfers exist.
+      first_acquired_ts: null,
       last_full_exit_ts: null,
       last_sell_ts: null,
-      held_since: new Date(nowSec * 1000).toISOString(),
-      continuous_hold_days: 0,
+      held_since: null,
+
+      // Same idea: don't force to 0 on every compute.
+      continuous_hold_days: null,
       never_sold: true,
-      no_sell_streak_days: 0,
+      no_sell_streak_days: null,
+
       balance_numeric: balanceNow,
       time_score: 0,
     };
@@ -107,9 +124,11 @@ export function computePerTokenStats(
       if (toMine) net += t.value;
       if (fromMine) net -= t.value;
 
+      // first time we net-positive (or become positive considering prior running)
       if (!firstAcquired && toMine && (net > 0n || running + net > 0n)) {
         firstAcquired = t.ts;
       }
+
       blockTs = t.ts;
     }
 
@@ -126,12 +145,11 @@ export function computePerTokenStats(
     if (running === 0n) lastFullExit = blockTs;
   }
 
-  if (!firstAcquired) firstAcquired = nowSec;
+  // If we couldn't find firstAcquired reliably, don't invent it.
+  if (!firstAcquired) return null;
 
   const heldSince =
-    lastFullExit && lastFullExit > firstAcquired
-      ? lastFullExit
-      : firstAcquired;
+    lastFullExit && lastFullExit > firstAcquired ? lastFullExit : firstAcquired;
 
   const continuousHoldDays = Math.max(
     0,
@@ -152,9 +170,7 @@ export function computePerTokenStats(
     last_full_exit_ts: lastFullExit
       ? new Date(lastFullExit * 1000).toISOString()
       : null,
-    last_sell_ts: lastSell
-      ? new Date(lastSell * 1000).toISOString()
-      : null,
+    last_sell_ts: lastSell ? new Date(lastSell * 1000).toISOString() : null,
     held_since: new Date(heldSince * 1000).toISOString(),
     continuous_hold_days: continuousHoldDays,
     never_sold: !everSold,
@@ -169,7 +185,7 @@ export function pickTop3(stats: PerTokenStats[]) {
     .sort(
       (a, b) =>
         b.time_score - a.time_score ||
-        b.continuous_hold_days - a.continuous_hold_days ||
+        (b.continuous_hold_days ?? 0) - (a.continuous_hold_days ?? 0) ||
         a.symbol.localeCompare(b.symbol)
     )
     .slice(0, 3);
