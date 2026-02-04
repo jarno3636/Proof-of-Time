@@ -74,7 +74,7 @@ async function resolveTokenMeta(
 ): Promise<{ symbol: string; decimals: number }> {
   const tokenKey = token.toLowerCase();
 
-  /* 1️⃣ token_cache */
+  // 1️⃣ cache
   try {
     const { data } = await supabase
       .from("token_cache")
@@ -90,7 +90,7 @@ async function resolveTokenMeta(
     }
   } catch {}
 
-  /* 2️⃣ Alchemy */
+  // 2️⃣ Alchemy
   if (alchemy) {
     try {
       const meta = await withTimeout(
@@ -116,7 +116,7 @@ async function resolveTokenMeta(
     } catch {}
   }
 
-  /* 3️⃣ On-chain */
+  // 3️⃣ on-chain
   for (const client of viemClients) {
     try {
       const [sym, dec] = await Promise.all([
@@ -158,7 +158,7 @@ async function resolveTokenMeta(
     } catch {}
   }
 
-  /* 4️⃣ deterministic fallback */
+  // 4️⃣ fallback
   const fallback = token.slice(2, 6).toUpperCase();
   await supabase.from("token_cache").upsert({
     token_address: tokenKey,
@@ -184,7 +184,7 @@ async function fetchBalances(
         UPSTREAM_TIMEOUT
       );
 
-      const list = Array.isArray((res as any)?.tokenBalances)
+      const list: any[] = Array.isArray((res as any)?.tokenBalances)
         ? (res as any).tokenBalances
         : [];
 
@@ -195,12 +195,14 @@ async function fetchBalances(
             typeof t.tokenBalance === "string" &&
             t.tokenBalance !== "0"
         )
-        .map((t: any): Balance => ({
-          token: t.contractAddress.toLowerCase() as HexAddr,
-          raw: BigInt(t.tokenBalance),
-          symbol: "TKN",
-          decimals: 18,
-        }))
+        .map(
+          (t: any): Balance => ({
+            token: t.contractAddress.toLowerCase() as HexAddr,
+            raw: BigInt(t.tokenBalance),
+            symbol: "TKN",
+            decimals: 18,
+          })
+        )
         .filter((b: Balance) => b.raw !== 0n);
 
       return { balances, source: "alchemy" };
@@ -244,41 +246,53 @@ export async function POST(req: NextRequest) {
     b.decimals = meta.decimals;
   }
 
-  const transfers =
-    (await fetchTransfersViaEtherscan(address).catch(() => [])) ||
-    (await fetchTransfersBase(address).catch(() => []));
+  let transfers: Transfer[] = [];
+  try {
+    transfers = await fetchTransfersViaEtherscan(address);
+    if (!transfers.length) {
+      transfers = await fetchTransfersBase(address);
+    }
+  } catch {}
 
-  // ✅ FIX: ensure this is always indexable
   const priceMap: Record<string, number> = await fetchPriceUSDMap(
     balances.map((b) => b.token)
-  ).catch(() => ({} as Record<string, number>));
+  ).catch(() => ({}));
 
   const stats: PerTokenStats[] = [];
   for (const b of balances) {
-    const s = computePerTokenStats(
-      address,
-      b.token,
-      transfers,
-      b,
-      priceMap[b.token.toLowerCase()]
-    );
+    const price = priceMap[b.token.toLowerCase()];
+    const s = computePerTokenStats(address, b.token, transfers, b, price);
     if (s) {
       s.symbol = normalizeSymbol(s.symbol, s.token_address);
       stats.push(s);
     }
   }
 
-  await supabase.from("token_holdings").upsert(
-    stats.map((s) => ({
-      address,
-      token_address: s.token_address.toLowerCase(),
-      symbol: s.symbol,
-      decimals: s.decimals,
-      ...s,
-      last_computed_at: new Date().toISOString(),
-    })),
-    { onConflict: "address,token_address" }
-  );
+  if (stats.length) {
+    await supabase.from("token_holdings").upsert(
+      stats.map((s) => ({
+        address,
+        token_address: s.token_address.toLowerCase(),
+        symbol: s.symbol,
+        decimals: s.decimals,
+
+        first_acquired_ts: s.first_acquired_ts,
+        last_full_exit_ts: s.last_full_exit_ts,
+        last_sell_ts: s.last_sell_ts,
+        held_since: s.held_since,
+
+        continuous_hold_days: s.continuous_hold_days,
+        no_sell_streak_days: s.no_sell_streak_days,
+        never_sold: s.never_sold,
+
+        balance_numeric: s.balance_numeric,
+        time_score: s.time_score,
+
+        last_computed_at: new Date().toISOString(),
+      })),
+      { onConflict: "address,token_address" }
+    );
+  }
 
   return NextResponse.json({
     address,
