@@ -3,35 +3,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { computePerTokenStats } from "@/lib/proofOfTime";
 import { Balance, HexAddr, PerTokenStats, Transfer } from "@/lib/types";
+
+// ✅ Base mainnet backup (your existing RPC + discovery utilities)
+import {
+  fetchBalancesBase,
+  fetchTransfersViaEtherscan,
+  fetchTransfersBase,
+  fetchPriceUSDMap,
+} from "@/lib/data";
+
 import { Alchemy, Network, AssetTransfersCategory } from "alchemy-sdk";
 
 /* ───────────────────── Config ───────────────────── */
 
 const ALCHEMY_KEY = process.env.ALCHEMY_API_KEY;
-if (!ALCHEMY_KEY) {
-  // Note: this message is safe (does not include the key)
-  throw new Error("ALCHEMY_API_KEY missing");
-}
+// Do NOT throw at import-time; Vercel/Next can evaluate modules in build/edge contexts.
+// We’ll validate at request-time to avoid unexpected build failures.
 
-const alchemy = new Alchemy({
-  apiKey: ALCHEMY_KEY,
-  network: Network.BASE_MAINNET,
-});
-
-// Reliability knobs
 const UPSTREAM_TIMEOUT_MS = 15_000;
 const META_TIMEOUT_MS = 6_000;
+
 const MAX_RETRIES = 4; // total attempts = 1 + retries
 const BASE_BACKOFF_MS = 400;
 const MAX_BACKOFF_MS = 4_000;
 
-// Transfers
-const TRANSFERS_PAGE_SIZE = 1000; // Alchemy usually caps at 1000 per page
-const TRANSFERS_MAX_PAGES = 12;   // prevent infinite loops (adjust if needed)
-const TRANSFERS_MAX_TOTAL = 20_000; // hard cap for safety
+// Transfers paging
+const TRANSFERS_PAGE_SIZE = 1000;
+const TRANSFERS_MAX_PAGES = 8;      // safer default
+const TRANSFERS_MAX_TOTAL = 10_000; // hard cap
 
-// Metadata fetch
+// Metadata concurrency
 const META_CONCURRENCY = 6;
+
+// Prefer “fresh data always”
+const ALWAYS_FRESH = true;
 
 /* ───────────────────── Utilities ───────────────────── */
 
@@ -52,19 +57,10 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function safe503(message = "Upstream data unavailable") {
-  return NextResponse.json({ error: message }, { status: 503 });
+function safeJson(status: number, message: string, extra?: Record<string, any>) {
+  return NextResponse.json({ error: message, ...(extra || {}) }, { status });
 }
 
-function safe400(message = "Bad request") {
-  return NextResponse.json({ error: message }, { status: 400 });
-}
-
-function safe500(message = "Server misconfigured") {
-  return NextResponse.json({ error: message }, { status: 500 });
-}
-
-// Hard timeout wrapper
 function withTimeout<T>(p: Promise<T>, ms = UPSTREAM_TIMEOUT_MS): Promise<T> {
   return Promise.race([
     p,
@@ -74,26 +70,34 @@ function withTimeout<T>(p: Promise<T>, ms = UPSTREAM_TIMEOUT_MS): Promise<T> {
   ]);
 }
 
-// Determine if an upstream error is retryable (no leaking details)
+// IMPORTANT: do not log full upstream error objects (Alchemy can include requestBody/url).
+function sanitizeErr(err: unknown) {
+  return {
+    name: String((err as any)?.name || ""),
+    code: String((err as any)?.code || ""),
+    message: String((err as any)?.message || err),
+  };
+}
+
 function isRetryableUpstreamError(err: unknown): boolean {
-  const msg = String((err as any)?.message || "");
-  const code = String((err as any)?.code || "");
+  const e = sanitizeErr(err);
+  const msg = e.message.toLowerCase();
+  const code = e.code.toUpperCase();
 
-  // Common “missing response” / server_error / timeouts
-  if (msg.includes("UPSTREAM_TIMEOUT")) return true;
-  if (msg.toLowerCase().includes("missing response")) return true;
-  if (code.toUpperCase().includes("SERVER_ERROR")) return true;
+  if (msg.includes("upstream_timeout")) return true;
+  if (msg.includes("timeout")) return true;
+  if (msg.includes("missing response")) return true;
+  if (code.includes("SERVER_ERROR")) return true;
 
-  // Some fetch/network-ish signals
-  if (msg.toLowerCase().includes("timeout")) return true;
-  if (msg.toLowerCase().includes("network")) return true;
-  if (msg.toLowerCase().includes("socket")) return true;
-  if (msg.toLowerCase().includes("econnreset")) return true;
+  // network-ish
+  if (msg.includes("network")) return true;
+  if (msg.includes("socket")) return true;
+  if (msg.includes("econnreset")) return true;
+  if (msg.includes("fetch")) return true;
 
   return false;
 }
 
-// Retry wrapper with exponential backoff + jitter
 async function withRetry<T>(
   label: string,
   fn: () => Promise<T>,
@@ -107,16 +111,15 @@ async function withRetry<T>(
       attempt++;
       const retryable = isRetryableUpstreamError(err);
 
-      // Sanitized logging only (no url/body/key)
+      const e = sanitizeErr(err);
       console.error(`[upstream:${label}] attempt ${attempt} failed`, {
-        message: String((err as any)?.message || err),
-        code: (err as any)?.code,
-        name: (err as any)?.name,
+        name: e.name,
+        code: e.code,
+        // message is okay (does not include key unless you stringify whole error object)
+        message: e.message,
       });
 
-      if (!retryable || attempt > maxRetries) {
-        throw err;
-      }
+      if (!retryable || attempt > maxRetries) throw err;
 
       const backoff = clamp(
         Math.floor(BASE_BACKOFF_MS * Math.pow(2, attempt - 1)),
@@ -128,11 +131,9 @@ async function withRetry<T>(
   }
 }
 
-// Simple concurrency limiter (no external deps)
 function createLimiter(concurrency: number) {
   let active = 0;
   const queue: Array<() => void> = [];
-
   const next = () => {
     active--;
     const job = queue.shift();
@@ -154,22 +155,27 @@ function createLimiter(concurrency: number) {
 
 const limitMeta = createLimiter(META_CONCURRENCY);
 
+function getAlchemy() {
+  if (!ALCHEMY_KEY) return null;
+  return new Alchemy({
+    apiKey: ALCHEMY_KEY,
+    network: Network.BASE_MAINNET,
+  });
+}
+
 /* ───────────────────── Alchemy Fetchers ───────────────────── */
 
-/**
- * Fetch balances via Alchemy Enhanced API.
- * We then hydrate symbol/decimals via getTokenMetadata with concurrency limits.
- */
-async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
-  return withRetry("balances", async () => {
-    // NOTE: alchemy-sdk supports this signature and internally uses alchemy_getTokenBalances.
-    // Some accounts may occasionally return “missing response”; retries handle it.
+async function fetchBalancesAlchemy(
+  alchemy: Alchemy,
+  address: HexAddr
+): Promise<Balance[]> {
+  return withRetry("alchemy_balances", async () => {
     const res = await withTimeout(alchemy.core.getTokenBalances(address), UPSTREAM_TIMEOUT_MS);
 
-    const balancesRaw = res?.tokenBalances || [];
-    if (!Array.isArray(balancesRaw)) return [];
+    const balancesRaw: any[] = Array.isArray((res as any)?.tokenBalances)
+      ? (res as any).tokenBalances
+      : [];
 
-    // Filter non-zero + normalize token addresses
     const candidates = balancesRaw
       .map((tb: any) => ({
         token: String(tb?.contractAddress || "").toLowerCase(),
@@ -179,20 +185,17 @@ async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
 
     if (!candidates.length) return [];
 
-    // Fetch metadata (symbol/decimals) with concurrency limits; tolerate failures.
     const metaCache = new Map<string, { symbol: string; decimals: number }>();
 
     async function getMeta(token: string) {
       const cached = metaCache.get(token);
       if (cached) return cached;
 
-      // Each metadata call is also retried and time-bounded.
       const meta = await limitMeta(async () => {
         try {
           return await withRetry(
-            "tokenMetadata",
-            async () =>
-              await withTimeout(alchemy.core.getTokenMetadata(token), META_TIMEOUT_MS),
+            "alchemy_tokenMetadata",
+            async () => await withTimeout(alchemy.core.getTokenMetadata(token), META_TIMEOUT_MS),
             2
           );
         } catch {
@@ -202,8 +205,7 @@ async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
 
       const out = {
         symbol: (meta as any)?.symbol || "TKN",
-        decimals:
-          typeof (meta as any)?.decimals === "number" ? (meta as any).decimals : 18,
+        decimals: typeof (meta as any)?.decimals === "number" ? (meta as any).decimals : 18,
       };
 
       metaCache.set(token, out);
@@ -211,8 +213,6 @@ async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
     }
 
     const out: Balance[] = [];
-
-    // Hydrate metadata in parallel (limited)
     await Promise.all(
       candidates.map(async (c) => {
         let raw = 0n;
@@ -224,7 +224,6 @@ async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
         if (raw === 0n) return;
 
         const meta = await getMeta(c.token);
-
         out.push({
           token: c.token as HexAddr,
           symbol: meta.symbol,
@@ -238,15 +237,11 @@ async function fetchBalancesAlchemy(address: HexAddr): Promise<Balance[]> {
   });
 }
 
-/**
- * Fetch ERC-20 transfers (incoming + outgoing) with pagination.
- * We DO NOT set `order` to avoid TS mismatch and because we sort later anyway.
- */
-async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
-  async function fetchDirection(params: {
-    fromAddress?: HexAddr;
-    toAddress?: HexAddr;
-  }): Promise<Transfer[]> {
+async function fetchTransfersAlchemy(
+  alchemy: Alchemy,
+  address: HexAddr
+): Promise<Transfer[]> {
+  async function fetchDirection(params: { fromAddress?: HexAddr; toAddress?: HexAddr }): Promise<Transfer[]> {
     let pageKey: string | undefined = undefined;
     let page = 0;
     const out: Transfer[] = [];
@@ -254,7 +249,8 @@ async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
     while (page < TRANSFERS_MAX_PAGES && out.length < TRANSFERS_MAX_TOTAL) {
       page++;
 
-      const resp = await withRetry("assetTransfers", async () => {
+      const resp = await withRetry("alchemy_transfers", async () => {
+        // NOTE: no `order` field — we sort ourselves after merge (avoids TS mismatch)
         return await withTimeout(
           alchemy.core.getAssetTransfers({
             category: [AssetTransfersCategory.ERC20],
@@ -263,13 +259,13 @@ async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
             maxCount: TRANSFERS_PAGE_SIZE,
             pageKey,
             ...params,
-          }),
+          } as any),
           UPSTREAM_TIMEOUT_MS
         );
       });
 
-      const transfers = (resp as any)?.transfers || [];
-      if (Array.isArray(transfers) && transfers.length) {
+      const transfers = Array.isArray((resp as any)?.transfers) ? (resp as any).transfers : [];
+      if (transfers.length) {
         for (const t of transfers) {
           const tokenAddr = String(t?.rawContract?.address || "").toLowerCase();
           if (!tokenAddr.startsWith("0x")) continue;
@@ -278,10 +274,9 @@ async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
           const to = String(t?.to || "").toLowerCase();
           if (!from.startsWith("0x") || !to.startsWith("0x")) continue;
 
-          const rawValue = String(t?.rawContract?.value || "0");
           let value = 0n;
           try {
-            value = BigInt(rawValue);
+            value = BigInt(String(t?.rawContract?.value || "0"));
           } catch {
             value = 0n;
           }
@@ -309,7 +304,6 @@ async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
       pageKey = (resp as any)?.pageKey;
       if (!pageKey) break;
 
-      // small sleep to reduce burstiness under heavy wallets
       await sleep(60);
     }
 
@@ -321,16 +315,34 @@ async function fetchTransfersAlchemy(address: HexAddr): Promise<Transfer[]> {
     fetchDirection({ toAddress: address }),
   ]);
 
-  // Merge + sort for deterministic behavior (and to help your stats logic)
   const merged = [...outgoing, ...incoming];
   merged.sort((a, b) => a.block - b.block || a.ts - b.ts);
   return merged;
 }
 
+/* ───────────────────── Base mainnet backup path (lib/data.ts) ───────────────────── */
+
+async function fetchBalancesBackup(address: HexAddr): Promise<Balance[]> {
+  // Your lib/data.ts already does GoldRush → Etherscan → seeds → RPC multicall.
+  // This is the “Base mainnet backup” path when Alchemy is flaky.
+  return await withRetry("backup_balances_base", async () => {
+    return await withTimeout(fetchBalancesBase(address), 30_000);
+  }, 2);
+}
+
+async function fetchTransfersBackup(address: HexAddr): Promise<Transfer[]> {
+  // Prefer Etherscan fast path, fall back to on-chain logs
+  return await withRetry("backup_transfers_base", async () => {
+    const es = await withTimeout(fetchTransfersViaEtherscan(address), 20_000).catch(() => []);
+    if (es.length) return es;
+    return await withTimeout(fetchTransfersBase(address), 45_000);
+  }, 2);
+}
+
 /* ───────────────────── POST /api/compute ───────────────────── */
 
 export async function POST(req: NextRequest) {
-  // Parse and normalize address
+  // 1) Parse + normalize address
   let address: HexAddr;
   try {
     const body = await req.json().catch(() => ({}));
@@ -340,59 +352,114 @@ export async function POST(req: NextRequest) {
       "";
 
     if (!raw || !isHexAddress(raw)) {
-      return safe400("Invalid address (expected 0x…40 hex)");
+      return safeJson(400, "Invalid address (expected 0x…40 hex)");
     }
     address = raw.toLowerCase() as HexAddr;
   } catch {
-    return safe400("Malformed request");
+    return safeJson(400, "Malformed request");
   }
 
-  // Supabase (write-only cache)
+  // 2) Supabase (write-only cache, never read)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !supabaseKey) {
-    return safe500("Server misconfigured (Supabase env missing)");
+    return safeJson(500, "Server misconfigured (Supabase env missing)");
   }
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Ensure wallet record (do not hard-fail compute if this write fails)
   try {
     await supabase.from("wallets").upsert({ address });
   } catch (e) {
-    console.error("[supabase wallets] non-fatal write failure", {
-      message: String((e as any)?.message || e),
-    });
+    console.error("[supabase wallets] non-fatal write failure", sanitizeErr(e));
   }
 
-  // Always prefer fresh chain data (Alchemy). Supabase is NOT read here.
+  // 3) Always prefer fresh on-chain/indexer data
   let balances: Balance[] = [];
   let transfers: Transfer[] = [];
-  try {
-    [balances, transfers] = await Promise.all([
-      fetchBalancesAlchemy(address),
-      fetchTransfersAlchemy(address),
-    ]);
-  } catch {
-    // Sanitized response (no upstream url/body/key)
-    return safe503("Unable to verify on-chain data right now. Please retry.");
+  let sourceBalances = "unknown";
+  let sourceTransfers = "unknown";
+
+  const alchemy = getAlchemy();
+
+  // --- Balances (required) ---
+  if (alchemy) {
+    try {
+      balances = await fetchBalancesAlchemy(alchemy, address);
+      sourceBalances = "alchemy";
+    } catch (e) {
+      console.warn("[compute] alchemy balances failed; falling back to base backup", sanitizeErr(e));
+    }
+  } else {
+    console.warn("[compute] ALCHEMY_API_KEY missing; using base backup");
   }
 
+  if (!balances.length) {
+    // Base mainnet backup for balances
+    try {
+      balances = await fetchBalancesBackup(address);
+      sourceBalances = "base_backup";
+    } catch (e) {
+      console.error("[compute] base backup balances failed", sanitizeErr(e));
+      return safeJson(503, "Unable to verify on-chain balances right now. Please retry.");
+    }
+  }
+
+  // --- Transfers (best-effort) ---
+  // We *do not* hard-fail the entire compute if transfers fail.
+  if (alchemy) {
+    try {
+      transfers = await fetchTransfersAlchemy(alchemy, address);
+      sourceTransfers = "alchemy";
+    } catch (e) {
+      console.warn("[compute] alchemy transfers failed; falling back", sanitizeErr(e));
+      transfers = [];
+    }
+  }
+
+  if (!transfers.length) {
+    try {
+      transfers = await fetchTransfersBackup(address);
+      sourceTransfers = transfers.length ? "base_backup" : "none";
+    } catch (e) {
+      console.warn("[compute] base backup transfers failed; continuing without transfers", sanitizeErr(e));
+      transfers = [];
+      sourceTransfers = "none";
+    }
+  }
+
+  // 4) Early return if no balances
   if (!balances.length) {
     return NextResponse.json({
       address,
       count: 0,
       note: "No ERC-20 balances detected on Base.",
+      meta: { sourceBalances, sourceTransfers },
     });
   }
 
-  // Compute per-token stats (fresh)
+  // 5) Prices (best-effort, never fatal)
+  let priceMap: Record<string, number> = {};
+  try {
+    priceMap = await withTimeout(fetchPriceUSDMap(balances.map((b) => b.token)), 10_000);
+  } catch (e) {
+    console.warn("[prices] unable to fetch prices (non-fatal)", sanitizeErr(e));
+    priceMap = {};
+  }
+
+  // 6) Compute per-token stats (fresh)
   const stats: PerTokenStats[] = [];
   for (const b of balances) {
-    const s = computePerTokenStats(address, b.token, transfers, b, undefined);
+    const s = computePerTokenStats(
+      address,
+      b.token,
+      transfers,
+      b,
+      priceMap[b.token.toLowerCase()]
+    );
     if (s) stats.push(s);
   }
 
-  // Persist (overwrite cache). If it fails, still return computed count.
+  // 7) Persist cache (non-fatal if it fails)
   if (stats.length) {
     const rows = stats.map((s) => ({
       address,
@@ -417,30 +484,29 @@ export async function POST(req: NextRequest) {
         .upsert(rows, { onConflict: "address,token_address" });
 
       if (error) {
-        console.error("[supabase token_holdings] upsert failed", {
-          message: error.message,
-        });
+        console.error("[supabase token_holdings] upsert failed", { message: error.message });
       }
     } catch (e) {
-      console.error("[supabase token_holdings] non-fatal write failure", {
-        message: String((e as any)?.message || e),
-      });
+      console.error("[supabase token_holdings] non-fatal write failure", sanitizeErr(e));
     }
   }
 
+  // 8) Respond
   return NextResponse.json({
     address,
     count: stats.length,
-    // helpful metadata for debugging without secrets:
     meta: {
       balances: balances.length,
       transfers: transfers.length,
-      source: "alchemy_fresh",
+      // This proves you’re not reading supabase — fresh is always preferred:
+      freshPreferred: ALWAYS_FRESH,
+      sourceBalances,
+      sourceTransfers,
     },
   });
 }
 
-/* ───────────────────── GET /api/compute (optional helper page) ───────────────────── */
+/* ───────────────────── GET /api/compute helper page ───────────────────── */
 
 export async function GET() {
   return new Response(
