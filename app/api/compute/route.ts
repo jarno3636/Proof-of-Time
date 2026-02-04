@@ -1,4 +1,3 @@
-// app/api/compute/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Alchemy, Network } from "alchemy-sdk";
@@ -75,7 +74,6 @@ async function resolveTokenMeta(
 ): Promise<{ symbol: string; decimals: number }> {
   const tokenKey = token.toLowerCase();
 
-  /* 1️⃣ token_cache */
   try {
     const { data } = await supabase
       .from("token_cache")
@@ -89,11 +87,8 @@ async function resolveTokenMeta(
         decimals: Number(data.decimals) || 18,
       };
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 
-  /* 2️⃣ Alchemy */
   if (alchemy) {
     try {
       const meta = await withTimeout(
@@ -116,12 +111,9 @@ async function resolveTokenMeta(
       });
 
       return { symbol, decimals };
-    } catch {
-      /* continue */
-    }
+    } catch {}
   }
 
-  /* 3️⃣ On-chain */
   for (const client of viemClients) {
     try {
       const [sym, dec] = await Promise.all([
@@ -160,12 +152,9 @@ async function resolveTokenMeta(
       });
 
       return { symbol, decimals };
-    } catch {
-      /* next rpc */
-    }
+    } catch {}
   }
 
-  /* 4️⃣ deterministic fallback */
   const fallback = token.slice(2, 6).toUpperCase();
   await supabase.from("token_cache").upsert({
     token_address: tokenKey,
@@ -208,12 +197,11 @@ async function fetchBalances(
           symbol: "TKN",
           decimals: 18,
         }))
-        .filter((b) => b.raw !== 0n);
+        // 🔧 FIX: explicit type
+        .filter((b: Balance) => b.raw !== 0n);
 
       return { balances, source: "alchemy" };
-    } catch {
-      /* fallback */
-    }
+    } catch {}
   }
 
   return { balances: await fetchBalancesBase(address), source: "base_backup" };
@@ -242,10 +230,7 @@ export async function POST(req: NextRequest) {
       ? new Alchemy({ apiKey: ALCHEMY_KEY, network: Network.BASE_MAINNET })
       : null;
 
-  let { balances, source: sourceBalances } = await fetchBalances(
-    alchemy,
-    address
-  );
+  let { balances } = await fetchBalances(alchemy, address);
   if (balances.length > MAX_TOKENS_PER_RUN) {
     balances = balances.slice(0, MAX_TOKENS_PER_RUN);
   }
