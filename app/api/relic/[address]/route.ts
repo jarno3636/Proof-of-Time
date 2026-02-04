@@ -1,71 +1,101 @@
+// app/api/relic/[address]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
-// IMPORTANT:
-// Ensure these ARE exported from lib/proofOfTime.ts
 import { pickTop3, classifyTier } from "@/lib/proofOfTime";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { address: string } }
-) {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const SECS_PER_DAY = 86400;
+
+function toLower(x: string) {
+  return (x || "").toLowerCase();
+}
+
+function parseIsoToSec(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor(ms / 1000);
+}
+
+export async function GET(_req: NextRequest, { params }: { params: { address: string } }) {
   const raw = (params.address || "").trim();
 
-  // Basic format check
   if (!/^0x[a-fA-F0-9]{40}$/.test(raw)) {
     return NextResponse.json({ error: "bad address" }, { status: 400 });
   }
 
   const addressLower = raw.toLowerCase();
 
-  // Create Supabase client per-request (safer in serverless)
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ error: "Server misconfigured (Supabase env missing)" }, { status: 500 });
+  }
 
-  // 1) Exact match (preferred)
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   const { data, error } = await supabase
     .from("token_holdings")
     .select("*")
-    .eq("address", addressLower);
+    .or(`address.eq.${addressLower},address.eq.${raw}`);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let rows = data ?? [];
+  let rows: any[] = data ?? [];
 
-  // 2) Legacy safety net (mixed-case historical rows)
+  // Safety net: mixed-case historical rows
   if (!rows.length) {
-    const { data: legacyRows } = await supabase
+    const { data: dataCI } = await supabase
       .from("token_holdings")
       .select("*")
-      .eq("address", raw);
-
-    if (legacyRows?.length) rows = legacyRows;
+      .ilike("address", addressLower);
+    if (dataCI) rows = dataCI as any[];
   }
 
   if (!rows.length) {
-    return NextResponse.json({
-      address: addressLower,
-      tokens: [],
-    });
+    return NextResponse.json(
+      { address: addressLower, tokens: [] },
+      { headers: { "cache-control": "no-store, max-age=0" } }
+    );
   }
 
-  // Top 3 + tiers
-  const top3 = pickTop3(rows as any).map((t: any) => ({
+  // ---- LIVE recompute day counters so they update every request ----
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const normalized = rows.map((r) => {
+    const heldSinceSec = parseIsoToSec(r.held_since) ?? nowSec;
+    const firstAcquiredSec = parseIsoToSec(r.first_acquired_ts) ?? heldSinceSec;
+    const lastSellSec = parseIsoToSec(r.last_sell_ts);
+
+    const continuousDays = Math.max(0, Math.floor((nowSec - heldSinceSec) / SECS_PER_DAY));
+    const noSellSince = lastSellSec ?? firstAcquiredSec;
+    const noSellDays = Math.max(0, Math.floor((nowSec - noSellSince) / SECS_PER_DAY));
+
+    // keep stored balance/time_score if you want; but compute a fresh tier basis
+    return {
+      ...r,
+      continuous_hold_days: continuousDays,
+      no_sell_streak_days: noSellDays,
+    };
+  });
+
+  const top3 = pickTop3(normalized as any).map((t: any) => ({
     token_address: t.token_address as `0x${string}`,
     symbol: t.symbol as string,
     days: t.continuous_hold_days as number,
     no_sell_streak_days: t.no_sell_streak_days as number,
-    never_sold: t.never_sold as boolean,
-    tier: classifyTier(t.continuous_hold_days),
+    never_sold: Boolean(t.never_sold),
+    tier: classifyTier(Number(t.continuous_hold_days) || 0),
     balance: t.balance_numeric as number | undefined,
   }));
 
-  return NextResponse.json({
-    address: addressLower,
-    tokens: top3,
-  });
+  return NextResponse.json(
+    { address: addressLower, tokens: top3 },
+    { headers: { "cache-control": "no-store, max-age=0" } }
+  );
 }
