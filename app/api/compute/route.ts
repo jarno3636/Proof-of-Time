@@ -671,13 +671,29 @@ export async function POST(req: NextRequest) {
 
   // 6) Load existing cursor rows for incremental mode (best effort)
   // If table doesn’t have these columns, Supabase returns them as null/undefined (fine).
-  const { data: existingRows } = await supabase
-    .from("token_holdings")
-    .select(
-      "token_address, last_scanned_block, running_balance_raw, running_balance_decimals, first_acquired_ts, first_acquired_block, last_full_exit_ts, last_full_exit_block, last_sell_ts, last_sell_block, symbol, decimals"
-    )
-    .eq("address", address)
-    .catch(() => ({ data: [] as any[] }));
+  const { data: existingRows, error: existingErr } = await supabase
+  .from("token_holdings")
+  .select(
+    `
+    token_address,
+    last_scanned_block,
+    running_balance_raw,
+    running_balance_decimals,
+    first_acquired_ts,
+    first_acquired_block,
+    last_full_exit_ts,
+    last_full_exit_block,
+    last_sell_ts,
+    last_sell_block,
+    symbol,
+    decimals
+    `
+  )
+  .eq("address", address);
+
+if (existingErr) {
+  console.warn("[supabase token_holdings select] non-fatal", existingErr.message);
+}
 
   const rowByToken = new Map<string, any>();
   for (const r of (existingRows || []) as any[]) {
