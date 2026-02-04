@@ -1,10 +1,11 @@
-// lib/proofOfTime.ts
 import { Balance, HexAddr, PerTokenStats, Transfer } from "./types";
 
 const SECS_PER_DAY = 86400;
 const DUST_USD = 0.5;
 
 const toLower = (x: string) => x.toLowerCase();
+
+/* ───────────────────────── Helpers ───────────────────────── */
 
 function groupByBlock<T extends { block: number }>(arr: T[]) {
   const m = new Map<number, T[]>();
@@ -24,6 +25,24 @@ function formatUnits(raw: bigint, decimals: number) {
   return Number(frac ? `${int}.${frac}` : int);
 }
 
+/* ───────────────────────── Public API ───────────────────────── */
+
+/**
+ * Tier classifier (used by /relic route)
+ */
+export function classifyTier(
+  days: number
+): "Bronze" | "Silver" | "Gold" | "Platinum" | "Obsidian" {
+  if (days >= 730) return "Obsidian";
+  if (days >= 365) return "Platinum";
+  if (days >= 180) return "Gold";
+  if (days >= 90) return "Silver";
+  return "Bronze";
+}
+
+/**
+ * Core computation
+ */
 export function computePerTokenStats(
   address: HexAddr,
   token: HexAddr,
@@ -44,31 +63,37 @@ export function computePerTokenStats(
     (t) => toLower(t.token) === tokenL
   );
 
+  // Resolve symbol (never leave as TKN if we can avoid it)
   const resolvedSymbol =
     balance.symbol && balance.symbol !== "TKN"
       ? balance.symbol
       : txs.find((t) => t.symbol && t.symbol !== "TKN")?.symbol
-      ?? `0x${token.slice(2, 6).toUpperCase()}`;
+      ?? token.slice(2, 6).toUpperCase();
 
-  // ─────────────────────────────
-  // NO TRANSFERS → DO NOT RESET
-  // ─────────────────────────────
+  /* ─────────────────────────────
+   * NO TRANSFERS (genesis / PoT)
+   * Treat as continuously held
+   * ───────────────────────────── */
   if (!txs.length) {
+    const heldDays = 0;
+
     return {
       token_address: token,
       symbol: resolvedSymbol,
       decimals: balance.decimals,
-      first_acquired_ts: null,
+      first_acquired_ts: new Date(nowSec * 1000).toISOString(),
       last_full_exit_ts: null,
       last_sell_ts: null,
-      held_since: null,
-      continuous_hold_days: null,
-      no_sell_streak_days: null,
+      held_since: new Date(nowSec * 1000).toISOString(),
+      continuous_hold_days: heldDays,
+      no_sell_streak_days: heldDays,
       never_sold: true,
       balance_numeric: balanceNow,
       time_score: 0,
     };
   }
+
+  /* ───────────────────────── Transfers present ───────────────────────── */
 
   const byBlock = groupByBlock(txs);
 
@@ -80,16 +105,21 @@ export function computePerTokenStats(
 
   for (const [, blockTxs] of byBlock) {
     blockTxs.sort((a, b) => a.ts - b.ts);
+
     let net = 0n;
     let blockTs = blockTxs[0].ts;
 
     for (const t of blockTxs) {
-      if (toLower(t.to) === addr) net += t.value;
-      if (toLower(t.from) === addr) net -= t.value;
+      const toMe = toLower(t.to) === addr;
+      const fromMe = toLower(t.from) === addr;
 
-      if (!firstAcquired && net > 0n) {
+      if (toMe) net += t.value;
+      if (fromMe) net -= t.value;
+
+      if (!firstAcquired && toMe && running + net > 0n) {
         firstAcquired = t.ts;
       }
+
       blockTs = t.ts;
     }
 
@@ -99,23 +129,29 @@ export function computePerTokenStats(
     }
 
     running += net;
-    if (running === 0n) lastFullExit = blockTs;
+    if (running === 0n) {
+      lastFullExit = blockTs;
+    }
   }
 
-  if (!firstAcquired) return null;
+  if (!firstAcquired) {
+    firstAcquired = nowSec;
+  }
 
   const heldSince =
     lastFullExit && lastFullExit > firstAcquired
       ? lastFullExit
       : firstAcquired;
 
-  const continuousHoldDays = Math.floor(
-    (nowSec - heldSince) / SECS_PER_DAY
+  const continuousHoldDays = Math.max(
+    0,
+    Math.floor((nowSec - heldSince) / SECS_PER_DAY)
   );
 
   const noSellSince = lastSell ?? firstAcquired;
-  const noSellStreakDays = Math.floor(
-    (nowSec - noSellSince) / SECS_PER_DAY
+  const noSellStreakDays = Math.max(
+    0,
+    Math.floor((nowSec - noSellSince) / SECS_PER_DAY)
   );
 
   return {
@@ -130,10 +166,24 @@ export function computePerTokenStats(
       ? new Date(lastSell * 1000).toISOString()
       : null,
     held_since: new Date(heldSince * 1000).toISOString(),
-    continuous_hold_days: Math.max(0, continuousHoldDays),
-    no_sell_streak_days: Math.max(0, noSellStreakDays),
+    continuous_hold_days: continuousHoldDays,
+    no_sell_streak_days: noSellStreakDays,
     never_sold: !everSold,
     balance_numeric: balanceNow,
-    time_score: Math.max(0, continuousHoldDays) * Math.log(balanceNow + 1),
+    time_score: continuousHoldDays * Math.log(balanceNow + 1),
   };
+}
+
+/**
+ * Used by /api/relic
+ */
+export function pickTop3(stats: PerTokenStats[]) {
+  return [...stats]
+    .sort(
+      (a, b) =>
+        b.time_score - a.time_score ||
+        b.continuous_hold_days - a.continuous_hold_days ||
+        a.symbol.localeCompare(b.symbol)
+    )
+    .slice(0, 3);
 }
