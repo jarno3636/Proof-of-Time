@@ -70,7 +70,7 @@ function normalizeSymbol(symbol: string | null | undefined, token: string) {
  * 4) deterministic fallback
  */
 async function resolveTokenMeta(
-  supabase: any,
+  supabase: ReturnType<typeof createClient>,
   alchemy: Alchemy | null,
   token: HexAddr
 ): Promise<{ symbol: string; decimals: number }> {
@@ -86,7 +86,7 @@ async function resolveTokenMeta(
 
     if (cached?.symbol && cached?.decimals != null) {
       return {
-        symbol: normalizeSymbol(cached.symbol, token),
+        symbol: normalizeSymbol(cached.symbol as string, token),
         decimals: Number(cached.decimals) || 18,
       };
     }
@@ -192,12 +192,14 @@ async function fetchBalances(
     try {
       const res = await withTimeout(alchemy.core.getTokenBalances(address), UPSTREAM_TIMEOUT);
 
-      const list = Array.isArray((res as any)?.tokenBalances) ? (res as any).tokenBalances : [];
+      const list: any[] = Array.isArray((res as any)?.tokenBalances)
+        ? (res as any).tokenBalances
+        : [];
 
       const balances: Balance[] = list
-        .filter((t: any) => t?.contractAddress && t?.tokenBalance && t.tokenBalance !== "0")
-        .map((t: any) => {
-          // ✅ FIX: tokenBalance can be string | null → sanitize before BigInt
+        .filter((t: any) => t?.contractAddress && t?.tokenBalance != null && t.tokenBalance !== "0")
+        .map((t: any): Balance => {
+          // tokenBalance can be string | null; guard hard
           const balStr =
             typeof t.tokenBalance === "string" && t.tokenBalance !== "0" ? t.tokenBalance : "0";
 
@@ -208,7 +210,8 @@ async function fetchBalances(
             decimals: 18,
           };
         })
-        .filter((b) => b.raw !== 0n);
+        // ✅ FIX: explicitly type b so TS doesn't infer implicit any
+        .filter((b: Balance) => b.raw !== 0n);
 
       return { balances, source: "alchemy" };
     } catch {
@@ -225,8 +228,8 @@ async function fetchBalances(
 export async function POST(req: NextRequest) {
   const started = Date.now();
 
-  const body = await req.json().catch(() => ({}));
-  const rawAddr = String(body?.address || "").trim();
+  const body = await req.json().catch(() => ({} as any));
+  const rawAddr = String((body as any)?.address || "").trim();
   if (!isHex(rawAddr)) {
     return NextResponse.json({ error: "Invalid address" }, { status: 400 });
   }
@@ -260,7 +263,10 @@ export async function POST(req: NextRequest) {
   }
 
   // balances
-  let { balances, source: sourceBalances } = await fetchBalances(alchemyPingOk ? alchemy : null, address);
+  let { balances, source: sourceBalances } = await fetchBalances(
+    alchemyPingOk ? alchemy : null,
+    address
+  );
   if (balances.length > MAX_TOKENS_PER_RUN) balances = balances.slice(0, MAX_TOKENS_PER_RUN);
 
   if (!balances.length) {
@@ -299,12 +305,15 @@ export async function POST(req: NextRequest) {
   }
 
   // prices (non-fatal)
-  const priceMap = await fetchPriceUSDMap(balances.map((b) => b.token)).catch(() => ({} as any));
+  const priceMap: Record<string, number> = await fetchPriceUSDMap(
+    balances.map((b) => b.token)
+  ).catch(() => ({} as Record<string, number>));
 
   // compute
   const stats: PerTokenStats[] = [];
   for (const b of balances) {
-    const s = computePerTokenStats(address, b.token, transfers, b, (priceMap as any)[b.token.toLowerCase()]);
+    const price = priceMap[b.token.toLowerCase()];
+    const s = computePerTokenStats(address, b.token, transfers, b, price);
     if (s) {
       // enforce: never store "TKN"
       s.symbol = normalizeSymbol(s.symbol, s.token_address);
