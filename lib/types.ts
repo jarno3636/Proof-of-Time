@@ -1,11 +1,13 @@
+// lib/types.ts
+
 export type HexAddr = `0x${string}`;
 
 export type Transfer = {
-  token: HexAddr;     // ERC-20 contract
+  token: HexAddr;
   from: HexAddr;
   to: HexAddr;
-  value: bigint;      // raw units
-  ts: number;         // unix seconds
+  value: bigint;
+  ts: number;
   block: number;
   symbol?: string;
   decimals?: number;
@@ -15,22 +17,32 @@ export type Balance = {
   token: HexAddr;
   symbol: string;
   decimals: number;
-  raw: bigint;        // raw units
+  raw: bigint;
 };
 
 export type PerTokenStats = {
   token_address: HexAddr;
   symbol: string;
   decimals: number;
-  first_acquired_ts: string;
+
+  // ⬇️ anchors MAY be null (do not overwrite DB)
+  first_acquired_ts: string | null;
   last_full_exit_ts: string | null;
   last_sell_ts: string | null;
-  held_since: string;
-  continuous_hold_days: number;
+  held_since: string | null;
+
+  // ⬇️ derived values may be null until anchored
+  continuous_hold_days: number | null;
+  no_sell_streak_days: number | null;
+
   never_sold: boolean;
-  no_sell_streak_days: number;
   balance_numeric: number;
   time_score: number;
 };
 
-export type RelicTier = "Bronze"|"Silver"|"Gold"|"Platinum"|"Obsidian";
+export type RelicTier =
+  | "Bronze"
+  | "Silver"
+  | "Gold"
+  | "Platinum"
+  | "Obsidian";
