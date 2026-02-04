@@ -11,21 +11,20 @@ import type { AbiEvent } from "viem";
 import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 
-// ───────────────────────────── ENV & seeds ─────────────────────────────
+/* ───────────────────── ENV & seeds ───────────────────── */
 
 const INFURA_KEY = process.env.INFURA_API_KEY || "";
 const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY || "";
-const GOLD_KEY = process.env.COVALENT_API_KEY || "";
 const SEED_ENV = (process.env.BASE_SEED_TOKENS || "").trim();
 
 /**
  * Proof of Time (protocol token)
- * Always tracked even if no transfers exist yet.
+ * Always tracked even with no transfers
  */
 const POT_TOKEN = "0xe4d22a9af4e14fdf70795dd9c9531295095f0cb6";
 
 const DEFAULT_SEEDS = [
-  "0x833589fCD6EDB6E08f4c7C32D4f41f182e88C0A4", // USDC
+  "0x833589fcd6edb6e08f4c7c32d4f41f182e88c0a4", // USDC
   "0x4200000000000000000000000000000000000006", // WETH
 ];
 
@@ -35,7 +34,7 @@ const SEED_TOKENS: HexAddr[] = [
   POT_TOKEN,
 ].map((a) => a.toLowerCase()) as HexAddr[];
 
-// ───────────────────── RPC clients ─────────────────────
+/* ───────────────────── RPC clients ───────────────────── */
 
 const INFURA_URL = INFURA_KEY
   ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}`
@@ -54,32 +53,26 @@ const clientPrimary = makeClient(INFURA_URL ?? PUBLIC_URL);
 const clientFallback = makeClient(PUBLIC_URL);
 
 async function withFallback<T>(
-  call: (c: ReturnType<typeof makeClient>) => Promise<T>,
-  fallbackValue?: T
+  call: (c: ReturnType<typeof makeClient>) => Promise<T>
 ): Promise<T> {
   try {
     return await call(clientPrimary);
   } catch {
-    try {
-      return await call(clientFallback);
-    } catch {
-      if (arguments.length === 2) return fallbackValue as T;
-      throw new Error("RPC failed");
-    }
+    return await call(clientFallback);
   }
 }
 
-// ───────────────────── Throttling ─────────────────────
+/* ───────────────────── Throttling ───────────────────── */
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 const LOG_RANGE_SLEEP_MS = 120;
-const MULTICALL_CHUNK = 75;
+const MULTICALL_CHUNK = 50;
 const MULTICALL_SLEEP_MS = 120;
 
-// ───────────────────────── helpers ─────────────────────────
+/* ───────────────────── Helpers ───────────────────── */
 
 const transferEvent = {
   type: "event",
@@ -91,9 +84,9 @@ const transferEvent = {
   ],
 } as const satisfies AbiEvent;
 
-const toLower = (x: string) => (x || "").toLowerCase();
+const toLower = (x: string) => x.toLowerCase();
 
-// ───────────── Transfers via Etherscan ─────────────
+/* ───────────────────── Transfers (Etherscan fast path) ───────────────────── */
 
 export async function fetchTransfersViaEtherscan(
   address: HexAddr,
@@ -115,7 +108,7 @@ export async function fetchTransfersViaEtherscan(
     url.searchParams.set("sort", "asc");
     url.searchParams.set("apikey", ETHERSCAN_KEY);
 
-    const res = await fetch(url.toString(), { cache: "no-store" }).catch(() => null);
+    const res = await fetch(url.toString()).catch(() => null);
     if (!res || !res.ok) break;
 
     const json: any = await res.json().catch(() => ({}));
@@ -123,18 +116,18 @@ export async function fetchTransfersViaEtherscan(
     if (!list.length) break;
 
     for (const r of list) {
-      const tokenAddr = toLower(r?.contractAddress);
-      if (!/^0x[0-9a-f]{40}$/.test(tokenAddr)) continue;
+      const token = toLower(r.contractAddress);
+      if (!token.startsWith("0x")) continue;
 
       out.push({
-        token: tokenAddr as HexAddr,
-        from: toLower(r?.from) as HexAddr,
-        to: toLower(r?.to) as HexAddr,
-        value: BigInt(r?.value ?? "0"),
-        block: Number(r?.blockNumber ?? 0),
-        ts: Number(r?.timeStamp ?? 0),
-        symbol: r?.tokenSymbol || "TKN",
-        decimals: Number(r?.tokenDecimal ?? 18),
+        token: token as HexAddr,
+        from: toLower(r.from) as HexAddr,
+        to: toLower(r.to) as HexAddr,
+        value: BigInt(r.value ?? "0"),
+        block: Number(r.blockNumber),
+        ts: Number(r.timeStamp),
+        symbol: r.tokenSymbol || "TKN",
+        decimals: Number(r.tokenDecimal ?? 18),
       });
     }
 
@@ -147,7 +140,7 @@ export async function fetchTransfersViaEtherscan(
   return out;
 }
 
-// ───────────── On-chain fallback transfers ─────────────
+/* ───────────────────── Transfers (Base RPC fallback) ───────────────────── */
 
 export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> {
   const acct = toLower(address) as HexAddr;
@@ -156,6 +149,7 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
 
   let from = 0n;
   const transfers: Transfer[] = [];
+  const blocks = new Set<bigint>();
 
   while (from <= latest) {
     const to = from + RANGE_SIZE < latest ? from + RANGE_SIZE : latest;
@@ -168,7 +162,7 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
           event: transferEvent,
           args: { from: getAddress(acct) },
         })
-      ).catch(() => []),
+      ),
       withFallback((c) =>
         c.getLogs({
           fromBlock: from,
@@ -176,7 +170,7 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
           event: transferEvent,
           args: { to: getAddress(acct) },
         })
-      ).catch(() => []),
+      ),
     ]);
 
     for (const log of [...outLogs, ...inLogs]) {
@@ -189,14 +183,16 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
         if (decoded.eventName !== "Transfer") continue;
 
         const args = decoded.args as { from: Hex; to: Hex; value: bigint };
+        const bn = log.blockNumber ?? 0n;
+        blocks.add(bn);
 
         transfers.push({
           token: toLower(log.address) as HexAddr,
           from: toLower(args.from) as HexAddr,
           to: toLower(args.to) as HexAddr,
           value: args.value,
-          block: Number(log.blockNumber ?? 0n),
-          ts: 0,
+          block: Number(bn),
+          ts: 0, // hydrated below
           symbol: "TKN",
           decimals: 18,
         });
@@ -207,55 +203,79 @@ export async function fetchTransfersBase(address: HexAddr): Promise<Transfer[]> 
     await sleep(LOG_RANGE_SLEEP_MS);
   }
 
+  /* ─── hydrate timestamps (CRITICAL FIX) ─── */
+  const blockTimeMap = new Map<number, number>();
+  await Promise.all(
+    [...blocks].map(async (bn) => {
+      const blk = await withFallback((c) =>
+        c.getBlock({ blockNumber: bn })
+      );
+      blockTimeMap.set(Number(bn), Number(blk.timestamp));
+    })
+  );
+
+  for (const t of transfers) {
+    t.ts = blockTimeMap.get(t.block) ?? 0;
+  }
+
+  transfers.sort((a, b) => a.block - b.block || a.ts - b.ts);
   return transfers;
 }
 
-// ───────────── Balances (GoldRush → RPC) ─────────────
+/* ───────────────────── Balances (RPC, discovered tokens) ───────────────────── */
 
 export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
-  const out: Balance[] = [];
-  const tokenSet = new Set<string>();
+  const balances: Balance[] = [];
+  const tokenSet = new Set<string>(SEED_TOKENS);
 
-  for (const t of SEED_TOKENS) tokenSet.add(t);
+  /* discover tokens from transfers if needed */
+  const txs = await fetchTransfersBase(address).catch(() => []);
+  for (const t of txs) tokenSet.add(t.token);
 
-  const candidates = [...tokenSet] as HexAddr[];
+  const tokens = [...tokenSet] as HexAddr[];
 
-  for (let i = 0; i < candidates.length; i += MULTICALL_CHUNK) {
-    const chunk = candidates.slice(i, i + MULTICALL_CHUNK);
+  for (let i = 0; i < tokens.length; i += MULTICALL_CHUNK) {
+    const chunk = tokens.slice(i, i + MULTICALL_CHUNK);
 
-    const balanceCalls = chunk.map((token) => ({
-      address: token,
-      abi: erc20Abi,
-      functionName: "balanceOf",
-      args: [address],
-    }));
-
-    const symbolCalls = chunk.map((token) => ({
-      address: token,
-      abi: erc20Abi,
-      functionName: "symbol",
-    }));
-
-    const decimalsCalls = chunk.map((token) => ({
-      address: token,
-      abi: erc20Abi,
-      functionName: "decimals",
-    }));
-
-    const [balancesRes, symbolsRes, decimalsRes] = await Promise.all([
-      withFallback((c) => c.multicall({ contracts: balanceCalls })).catch(() => []),
-      withFallback((c) => c.multicall({ contracts: symbolCalls })).catch(() => []),
-      withFallback((c) => c.multicall({ contracts: decimalsCalls })).catch(() => []),
+    const [bal, sym, dec] = await Promise.all([
+      withFallback((c) =>
+        c.multicall({
+          contracts: chunk.map((t) => ({
+            address: t,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [address],
+          })),
+        })
+      ),
+      withFallback((c) =>
+        c.multicall({
+          contracts: chunk.map((t) => ({
+            address: t,
+            abi: erc20Abi,
+            functionName: "symbol",
+          })),
+        })
+      ),
+      withFallback((c) =>
+        c.multicall({
+          contracts: chunk.map((t) => ({
+            address: t,
+            abi: erc20Abi,
+            functionName: "decimals",
+          })),
+        })
+      ),
     ]);
 
     for (let j = 0; j < chunk.length; j++) {
-      const raw = (balancesRes?.[j] as any)?.result as bigint | undefined;
+      const raw = (bal[j] as any)?.result as bigint | undefined;
       if (!raw || raw === 0n) continue;
 
-      out.push({
+      balances.push({
         token: chunk[j],
-        symbol: ((symbolsRes?.[j] as any)?.result as string) ?? "TKN",
-        decimals: Number(((decimalsRes?.[j] as any)?.result as number) ?? 18),
+        symbol: ((sym[j] as any)?.result as string) ?? "TKN",
+        decimals: Number((dec[j] as any)?.result ?? 18),
         raw,
       });
     }
@@ -263,10 +283,10 @@ export async function fetchBalancesBase(address: HexAddr): Promise<Balance[]> {
     await sleep(MULTICALL_SLEEP_MS);
   }
 
-  return out;
+  return balances;
 }
 
-// ───────────── Prices (DeFiLlama) ─────────────
+/* ───────────────────── Prices (DeFiLlama) ───────────────────── */
 
 export async function fetchPriceUSDMap(
   tokens: HexAddr[]
@@ -274,19 +294,20 @@ export async function fetchPriceUSDMap(
   const uniq = [...new Set(tokens.map((t) => t.toLowerCase()))];
   if (!uniq.length) return {};
 
-  const ids = uniq.map((a) => `base:${a}`).join(",");
-  const res = await fetch(`https://coins.llama.fi/prices/current/${ids}`, {
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `https://coins.llama.fi/prices/current/${uniq
+      .map((a) => `base:${a}`)
+      .join(",")}`
+  );
   if (!res.ok) return {};
 
   const json = await res.json().catch(() => ({}));
   const out: Record<string, number> = {};
 
-  for (const [key, val] of Object.entries(json.coins || {})) {
-    const addrLower = key.split(":")[1];
-    if (addrLower && typeof (val as any).price === "number") {
-      out[addrLower] = (val as any).price;
+  for (const [k, v] of Object.entries(json.coins || {})) {
+    const addr = k.split(":")[1];
+    if (addr && typeof (v as any).price === "number") {
+      out[addr] = (v as any).price;
     }
   }
 
