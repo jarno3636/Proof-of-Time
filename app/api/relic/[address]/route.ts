@@ -1,18 +1,22 @@
-// app/api/relic/[address]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { classifyTier } from "@/lib/proofOfTime";
 import type { HexAddr } from "@/lib/types";
 
+/* ───────────────── runtime ───────────────── */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+/* ───────────────── supabase ───────────────── */
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const isHexAddr = (s: string): s is HexAddr => /^0x[a-fA-F0-9]{40}$/.test(s);
+/* ───────────────── helpers ───────────────── */
+
+const isHexAddr = (s: string): s is HexAddr =>
+  /^0x[a-fA-F0-9]{40}$/.test(s);
 
 function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -28,28 +32,35 @@ function normalizeSymbol(sym: unknown): string | null {
   return s;
 }
 
+/* ───────────────── symbol resolver ───────────────── */
+
 async function resolveTopSymbols(tokens: HexAddr[]) {
-  if (!tokens.length) return new Map<string, string | null>();
-
-  // pull verified cache first
-  const { data } = await supabase
-    .from("token_cache")
-    .select("token_address,symbol,verified")
-    .in("token_address", tokens.map((t) => t.toLowerCase()))
-    .catch(() => ({ data: [] as any[] }));
-
   const map = new Map<string, string | null>();
-  for (const row of data || []) {
-    if (row?.verified && normalizeSymbol(row.symbol)) {
-      map.set(String(row.token_address).toLowerCase(), normalizeSymbol(row.symbol));
+  if (!tokens.length) return map;
+
+  /* 1️⃣ verified cache */
+  let cached: any[] = [];
+  try {
+    const res = await supabase
+      .from("token_cache")
+      .select("token_address,symbol,verified")
+      .in("token_address", tokens.map((t) => t.toLowerCase()));
+
+    cached = res.data || [];
+  } catch {}
+
+  for (const row of cached) {
+    if (row?.verified) {
+      const sym = normalizeSymbol(row.symbol);
+      if (sym) {
+        map.set(String(row.token_address).toLowerCase(), sym);
+      }
     }
   }
 
-  // any missing? call internal resolver endpoint logic by inserting rows via API call is overkill here;
-  // easiest: call your /api/tokens/resolve from server-side? (no, that's a Next route too)
-  // So instead: attempt BaseScan directly here (minimal duplication)
-  const key = process.env.BASESCAN_API_KEY;
-  if (!key) return map;
+  /* 2️⃣ BaseScan fallback (verified only) */
+  const apiKey = process.env.BASESCAN_API_KEY;
+  if (!apiKey) return map;
 
   for (const token of tokens) {
     const tk = token.toLowerCase();
@@ -60,12 +71,12 @@ async function resolveTopSymbols(tokens: HexAddr[]) {
       url.searchParams.set("module", "token");
       url.searchParams.set("action", "tokeninfo");
       url.searchParams.set("contractaddress", token);
-      url.searchParams.set("apikey", key);
+      url.searchParams.set("apikey", apiKey);
 
-      const res = await fetch(url.toString()).catch(() => null);
-      if (!res || !res.ok) continue;
+      const res = await fetch(url.toString());
+      if (!res.ok) continue;
 
-      const json: any = await res.json().catch(() => null);
+      const json: any = await res.json();
       const result = Array.isArray(json?.result) ? json.result[0] : null;
       if (!result) continue;
 
@@ -82,63 +93,75 @@ async function resolveTopSymbols(tokens: HexAddr[]) {
 
       map.set(tk, sym);
 
-      await supabase.from("token_cache").upsert({
-        token_address: tk,
-        symbol: sym,
-        name,
-        decimals: dec,
-        source: "basescan",
-        verified: true,
-        updated_at: new Date().toISOString(),
-      }).catch(() => null);
+      try {
+        await supabase.from("token_cache").upsert({
+          token_address: tk,
+          symbol: sym,
+          name,
+          decimals: dec,
+          source: "basescan",
+          verified: true,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {}
     } catch {}
   }
 
   return map;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { address: string } }) {
+/* ───────────────── GET ───────────────── */
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { address: string } }
+) {
   const raw = String(params.address || "").trim();
-  if (!/^0x[a-fA-F0-9]{40}$/.test(raw)) {
+  if (!isHexAddr(raw)) {
     return NextResponse.json({ error: "bad address" }, { status: 400 });
   }
 
   const address = raw.toLowerCase();
 
-  const { data, error } = await supabase
-    .from("token_holdings")
-    .select("token_address,continuous_hold_days,no_sell_streak_days,never_sold,balance_numeric,time_score,last_computed_at")
-    .eq("address", address);
+  let rows: any[] = [];
+  try {
+    const res = await supabase
+      .from("token_holdings")
+      .select(
+        "token_address,continuous_hold_days,no_sell_streak_days,never_sold,balance_numeric,time_score"
+      )
+      .eq("address", address);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rows = res.data || [];
+  } catch {
+    return NextResponse.json({ error: "db error" }, { status: 500 });
+  }
 
-  const rows = (data || []).map((r: any) => ({
+  const normalized = rows.map((r) => ({
     token_address: String(r.token_address).toLowerCase() as HexAddr,
-    continuous_hold_days: r.continuous_hold_days == null ? 0 : Number(r.continuous_hold_days),
-    no_sell_streak_days: r.no_sell_streak_days == null ? 0 : Number(r.no_sell_streak_days),
+    continuous_hold_days: Number(r.continuous_hold_days || 0),
+    no_sell_streak_days: Number(r.no_sell_streak_days || 0),
     never_sold: Boolean(r.never_sold),
-    balance_numeric: r.balance_numeric != null ? Number(r.balance_numeric) : 0,
-    time_score: r.time_score != null ? Number(r.time_score) : 0,
+    balance_numeric: Number(r.balance_numeric || 0),
+    time_score: Number(r.time_score || 0),
   }));
 
-  rows.sort(
+  normalized.sort(
     (a, b) =>
       b.time_score - a.time_score ||
-      b.continuous_hold_days - a.continuous_hold_days ||
-      a.token_address.localeCompare(b.token_address)
+      b.continuous_hold_days - a.continuous_hold_days
   );
 
-  const top = rows.slice(0, 3);
+  const top = normalized.slice(0, 3);
   const symMap = await resolveTopSymbols(top.map((t) => t.token_address));
 
   const tokens = top.map((t) => {
-    const sym = symMap.get(t.token_address.toLowerCase()) ?? null;
-    const display = sym ? sym : "TOKEN"; // NEVER fake like B8D9
+    const sym = symMap.get(t.token_address) ?? null;
     return {
       token_address: t.token_address,
-      symbol: display,
+      symbol: sym ?? "TOKEN",
       symbol_verified: Boolean(sym),
-      symbol_hint: sym ? sym : shortAddr(t.token_address),
+      symbol_hint: sym ?? shortAddr(t.token_address),
       days: t.continuous_hold_days,
       no_sell_streak_days: t.no_sell_streak_days,
       never_sold: t.never_sold,
