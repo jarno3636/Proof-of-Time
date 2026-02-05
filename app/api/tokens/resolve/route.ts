@@ -35,21 +35,21 @@ const clients = RPCS.map((url) =>
 const isHexAddr = (s: string): s is HexAddr =>
   /^0x[a-fA-F0-9]{40}$/.test(s);
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
-  ]);
-}
-
 function normalizeSymbol(sym: unknown): string | null {
   if (typeof sym !== "string") return null;
   const s = sym.trim();
   if (!s) return null;
   if (s.toUpperCase() === "TKN") return null;
-  if (s.length === 4 && /^[0-9A-F]{4}$/.test(s)) return null; // kill B8D9 garbage
+  if (s.length === 4 && /^[0-9A-F]{4}$/.test(s)) return null; // kill B8D9
   if (s.length > 24) return null;
   return s;
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+  ]);
 }
 
 /* ───────────────── allowlist ───────────────── */
@@ -75,53 +75,104 @@ const ALLOWLIST: Record<
   },
 };
 
+/* ───────────────── CoinGecko (Base) ───────────────── */
+
+async function fetchCoinGecko(token: HexAddr) {
+  const url =
+    "https://api.coingecko.com/api/v3/onchain/networks/base/tokens/" + token;
+
+  const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+  if (!res || !res.ok) return null;
+
+  const j: any = await res.json().catch(() => null);
+  const attr = j?.data?.attributes;
+  if (!attr) return null;
+
+  const symbol = normalizeSymbol(attr.symbol);
+  const decimals = Number(attr.decimals);
+  const name = typeof attr.name === "string" ? attr.name : null;
+
+  if (!symbol || !Number.isFinite(decimals)) return null;
+
+  return { symbol, decimals, name, source: "coingecko" };
+}
+
+/* ───────────────── DefiLlama ───────────────── */
+
+let llamaCache: Map<string, any> | null = null;
+
+async function loadDefiLlama() {
+  if (llamaCache) return llamaCache;
+
+  const res = await fetch("https://tokens.llama.fi").catch(() => null);
+  if (!res || !res.ok) return null;
+
+  const j: any = await res.json().catch(() => null);
+  const map = new Map<string, any>();
+
+  for (const k of Object.keys(j?.tokens || {})) {
+    const [chain, addr] = k.split(":");
+    if (chain === "base" && isHexAddr(addr)) {
+      map.set(addr.toLowerCase(), j.tokens[k]);
+    }
+  }
+
+  llamaCache = map;
+  return map;
+}
+
+async function fetchDefiLlama(token: HexAddr) {
+  const map = await loadDefiLlama();
+  if (!map) return null;
+
+  const t = map.get(token.toLowerCase());
+  if (!t) return null;
+
+  const symbol = normalizeSymbol(t.symbol);
+  const decimals = Number(t.decimals);
+  const name = typeof t.name === "string" ? t.name : null;
+
+  if (!symbol || !Number.isFinite(decimals)) return null;
+
+  return { symbol, decimals, name, source: "defillama" };
+}
+
 /* ───────────────── Etherscan (Base) ───────────────── */
 
-async function fetchEtherscanTokenInfo(token: HexAddr) {
+async function fetchEtherscan(token: HexAddr) {
   if (!ETHERSCAN_API_KEY) return null;
 
   const url = new URL("https://api.etherscan.io/v2/api");
-  url.searchParams.set("chainid", "8453"); // BASE
+  url.searchParams.set("chainid", "8453");
   url.searchParams.set("module", "token");
   url.searchParams.set("action", "tokeninfo");
   url.searchParams.set("contractaddress", token);
   url.searchParams.set("apikey", ETHERSCAN_API_KEY);
 
-  let res: Response;
-  try {
-    res = await withTimeout(fetch(url.toString()), UPSTREAM_TIMEOUT);
-  } catch {
-    return null;
-  }
+  const res = await fetch(url.toString()).catch(() => null);
+  if (!res || !res.ok) return null;
 
-  if (!res.ok) return null;
+  const j: any = await res.json().catch(() => null);
+  const r = Array.isArray(j?.result) ? j.result[0] : null;
+  if (!r) return null;
 
-  const json: any = await res.json().catch(() => null);
-  const result = Array.isArray(json?.result) ? json.result[0] : null;
-  if (!result) return null;
-
-  const symbol = normalizeSymbol(result.symbol);
-  const decimals = Number(result.decimals ?? result.tokenDecimal);
+  const symbol = normalizeSymbol(r.symbol);
+  const decimals = Number(r.decimals ?? r.tokenDecimal);
   const name =
-    typeof result.tokenName === "string"
-      ? result.tokenName
-      : typeof result.name === "string"
-      ? result.name
+    typeof r.tokenName === "string"
+      ? r.tokenName
+      : typeof r.name === "string"
+      ? r.name
       : null;
 
   if (!symbol || !Number.isFinite(decimals)) return null;
 
-  return {
-    symbol,
-    decimals,
-    name: name ?? null,
-    source: "etherscan",
-  };
+  return { symbol, decimals, name, source: "etherscan" };
 }
 
 /* ───────────────── On-chain fallback ───────────────── */
 
-async function fetchOnchainMeta(token: HexAddr) {
+async function fetchOnchain(token: HexAddr) {
   for (const c of clients) {
     try {
       const [sym, dec] = await Promise.all([
@@ -151,14 +202,9 @@ async function fetchOnchainMeta(token: HexAddr) {
           ? dec
           : null;
 
-      if (!symbol || decimals == null || decimals < 0 || decimals > 36) continue;
+      if (!symbol || decimals == null || decimals > 36) continue;
 
-      return {
-        symbol,
-        decimals,
-        name: null as string | null,
-        source: "onchain",
-      };
+      return { symbol, decimals, name: null, source: "onchain" };
     } catch {}
   }
   return null;
@@ -168,11 +214,11 @@ async function fetchOnchainMeta(token: HexAddr) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as any));
-  const tokensIn = (body as any)?.tokens;
+  const tokensIn = body?.tokens;
 
   const tokens: HexAddr[] = Array.isArray(tokensIn)
     ? tokensIn
-        .map((t) => String(t || "").toLowerCase())
+        .map((t) => String(t).toLowerCase())
         .filter((t): t is HexAddr => isHexAddr(t))
     : [];
 
@@ -193,11 +239,9 @@ export async function POST(req: NextRequest) {
   for (const token of tokens) {
     const tk = token.toLowerCase();
 
-    // 1️⃣ Allowlist
+    // 1) allowlist
     if (ALLOWLIST[tk]) {
       const v = ALLOWLIST[tk];
-      out[tk] = { ...v, source: "allowlist", verified: true };
-
       await supabase.from("token_cache").upsert({
         token_address: tk,
         symbol: v.symbol,
@@ -207,72 +251,44 @@ export async function POST(req: NextRequest) {
         verified: true,
         updated_at: new Date().toISOString(),
       });
-
+      out[tk] = { ...v, source: "allowlist", verified: true };
       continue;
     }
 
-    // 2️⃣ Verified cache
-    const { data: cached } = await supabase
+    // 2) verified cache
+    const cached = await supabase
       .from("token_cache")
       .select("symbol,decimals,name,source,verified")
       .eq("token_address", tk)
       .maybeSingle();
 
-    if (cached?.verified && normalizeSymbol(cached.symbol)) {
-      out[tk] = {
-        symbol: cached.symbol,
-        decimals: cached.decimals,
-        name: cached.name,
-        source: cached.source,
-        verified: true,
-      };
+    if (cached.data?.verified && normalizeSymbol(cached.data.symbol)) {
+      out[tk] = { ...cached.data, verified: true };
       continue;
     }
 
-    // 3️⃣ Etherscan (Base)
-    const es = await fetchEtherscanTokenInfo(token);
-    if (es) {
-      out[tk] = { ...es, verified: true };
+    // 3–6 resolution
+    const resolved =
+      (await fetchCoinGecko(token)) ||
+      (await fetchDefiLlama(token)) ||
+      (await fetchEtherscan(token)) ||
+      (await fetchOnchain(token));
 
+    if (resolved) {
       await supabase.from("token_cache").upsert({
         token_address: tk,
-        symbol: es.symbol,
-        name: es.name,
-        decimals: es.decimals,
-        source: es.source,
+        symbol: resolved.symbol,
+        name: resolved.name,
+        decimals: resolved.decimals,
+        source: resolved.source,
         verified: true,
         updated_at: new Date().toISOString(),
       });
-
+      out[tk] = { ...resolved, verified: true };
       continue;
     }
 
-    // 4️⃣ On-chain validated fallback
-    const oc = await fetchOnchainMeta(token);
-    if (oc) {
-      out[tk] = { ...oc, verified: true };
-
-      await supabase.from("token_cache").upsert({
-        token_address: tk,
-        symbol: oc.symbol,
-        name: oc.name,
-        decimals: oc.decimals,
-        source: oc.source,
-        verified: true,
-        updated_at: new Date().toISOString(),
-      });
-
-      continue;
-    }
-
-    // 5️⃣ Unknown (never cached)
-    out[tk] = {
-      symbol: null,
-      decimals: null,
-      name: null,
-      source: "unknown",
-      verified: false,
-    };
+    out[tk] = { symbol: null, verified: false };
   }
 
   return NextResponse.json({ tokens: out });
