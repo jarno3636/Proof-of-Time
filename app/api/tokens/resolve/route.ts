@@ -1,3 +1,4 @@
+// app/api/tokens/resolve/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient, http } from "viem";
@@ -11,7 +12,10 @@ export const revalidate = 0;
 
 /* ───────────────── config ───────────────── */
 
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const UPSTREAM_TIMEOUT = 8_000;
+
+/* ───────────────── RPC fallback ───────────────── */
 
 const RPCS = [
   "https://mainnet.base.org",
@@ -43,7 +47,7 @@ function normalizeSymbol(sym: unknown): string | null {
   const s = sym.trim();
   if (!s) return null;
   if (s.toUpperCase() === "TKN") return null;
-  if (s.length === 4 && /^[0-9A-F]{4}$/.test(s)) return null; // kill B8D9
+  if (s.length === 4 && /^[0-9A-F]{4}$/.test(s)) return null; // kill B8D9 garbage
   if (s.length > 24) return null;
   return s;
 }
@@ -71,17 +75,17 @@ const ALLOWLIST: Record<
   },
 };
 
-/* ───────────────── upstream resolvers ───────────────── */
+/* ───────────────── Etherscan (Base) ───────────────── */
 
-async function fetchBaseScanTokenInfo(token: HexAddr) {
-  const key = process.env.BASESCAN_API_KEY;
-  if (!key) return null;
+async function fetchEtherscanTokenInfo(token: HexAddr) {
+  if (!ETHERSCAN_API_KEY) return null;
 
-  const url = new URL("https://api.basescan.org/api");
+  const url = new URL("https://api.etherscan.io/v2/api");
+  url.searchParams.set("chainid", "8453"); // BASE
   url.searchParams.set("module", "token");
   url.searchParams.set("action", "tokeninfo");
   url.searchParams.set("contractaddress", token);
-  url.searchParams.set("apikey", key);
+  url.searchParams.set("apikey", ETHERSCAN_API_KEY);
 
   let res: Response;
   try {
@@ -97,7 +101,7 @@ async function fetchBaseScanTokenInfo(token: HexAddr) {
   if (!result) return null;
 
   const symbol = normalizeSymbol(result.symbol);
-  const decimals = Number(result.decimals ?? result.tokenDecimal ?? 18);
+  const decimals = Number(result.decimals ?? result.tokenDecimal);
   const name =
     typeof result.tokenName === "string"
       ? result.tokenName
@@ -111,9 +115,11 @@ async function fetchBaseScanTokenInfo(token: HexAddr) {
     symbol,
     decimals,
     name: name ?? null,
-    source: "basescan" as const,
+    source: "etherscan",
   };
 }
+
+/* ───────────────── On-chain fallback ───────────────── */
 
 async function fetchOnchainMeta(token: HexAddr) {
   for (const c of clients) {
@@ -151,7 +157,7 @@ async function fetchOnchainMeta(token: HexAddr) {
         symbol,
         decimals,
         name: null as string | null,
-        source: "onchain" as const,
+        source: "onchain",
       };
     } catch {}
   }
@@ -177,133 +183,89 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-  if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.json({ error: "Supabase env missing" }, { status: 500 });
-  }
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  );
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  const out: Record<
-    string,
-    {
-      symbol: string | null;
-      decimals: number | null;
-      name: string | null;
-      source: string;
-      verified: boolean;
-    }
-  > = {};
+  const out: Record<string, any> = {};
 
   for (const token of tokens) {
     const tk = token.toLowerCase();
 
-    /* 1️⃣ allowlist */
+    // 1️⃣ Allowlist
     if (ALLOWLIST[tk]) {
       const v = ALLOWLIST[tk];
-      out[tk] = {
+      out[tk] = { ...v, source: "allowlist", verified: true };
+
+      await supabase.from("token_cache").upsert({
+        token_address: tk,
         symbol: v.symbol,
-        decimals: v.decimals,
         name: v.name ?? null,
+        decimals: v.decimals,
         source: "allowlist",
         verified: true,
-      };
-
-      try {
-        await supabase.from("token_cache").upsert({
-          token_address: tk,
-          symbol: v.symbol,
-          name: v.name ?? null,
-          decimals: v.decimals,
-          source: "allowlist",
-          verified: true,
-          updated_at: new Date().toISOString(),
-        });
-      } catch {}
+        updated_at: new Date().toISOString(),
+      });
 
       continue;
     }
 
-    /* 2️⃣ verified cache */
-    let cached: any = null;
-    try {
-      const res = await supabase
-        .from("token_cache")
-        .select("symbol,decimals,name,source,verified")
-        .eq("token_address", tk)
-        .maybeSingle();
-      cached = res.data;
-    } catch {}
+    // 2️⃣ Verified cache
+    const { data: cached } = await supabase
+      .from("token_cache")
+      .select("symbol,decimals,name,source,verified")
+      .eq("token_address", tk)
+      .maybeSingle();
 
-    if (
-      cached?.verified &&
-      normalizeSymbol(cached.symbol) &&
-      cached.decimals != null
-    ) {
+    if (cached?.verified && normalizeSymbol(cached.symbol)) {
       out[tk] = {
-        symbol: normalizeSymbol(cached.symbol),
-        decimals: Number(cached.decimals),
-        name: typeof cached.name === "string" ? cached.name : null,
-        source: String(cached.source || "cache"),
+        symbol: cached.symbol,
+        decimals: cached.decimals,
+        name: cached.name,
+        source: cached.source,
         verified: true,
       };
       continue;
     }
 
-    /* 3️⃣ BaseScan */
-    const bs = await fetchBaseScanTokenInfo(token);
-    if (bs) {
-      out[tk] = {
-        symbol: bs.symbol,
-        decimals: bs.decimals,
-        name: bs.name,
-        source: bs.source,
-        verified: true,
-      };
+    // 3️⃣ Etherscan (Base)
+    const es = await fetchEtherscanTokenInfo(token);
+    if (es) {
+      out[tk] = { ...es, verified: true };
 
-      try {
-        await supabase.from("token_cache").upsert({
-          token_address: tk,
-          symbol: bs.symbol,
-          name: bs.name,
-          decimals: bs.decimals,
-          source: bs.source,
-          verified: true,
-          updated_at: new Date().toISOString(),
-        });
-      } catch {}
+      await supabase.from("token_cache").upsert({
+        token_address: tk,
+        symbol: es.symbol,
+        name: es.name,
+        decimals: es.decimals,
+        source: es.source,
+        verified: true,
+        updated_at: new Date().toISOString(),
+      });
 
       continue;
     }
 
-    /* 4️⃣ on-chain validated */
+    // 4️⃣ On-chain validated fallback
     const oc = await fetchOnchainMeta(token);
     if (oc) {
-      out[tk] = {
+      out[tk] = { ...oc, verified: true };
+
+      await supabase.from("token_cache").upsert({
+        token_address: tk,
         symbol: oc.symbol,
-        decimals: oc.decimals,
         name: oc.name,
+        decimals: oc.decimals,
         source: oc.source,
         verified: true,
-      };
-
-      try {
-        await supabase.from("token_cache").upsert({
-          token_address: tk,
-          symbol: oc.symbol,
-          name: oc.name,
-          decimals: oc.decimals,
-          source: oc.source,
-          verified: true,
-          updated_at: new Date().toISOString(),
-        });
-      } catch {}
+        updated_at: new Date().toISOString(),
+      });
 
       continue;
     }
 
-    /* 5️⃣ unknown */
+    // 5️⃣ Unknown (never cached)
     out[tk] = {
       symbol: null,
       decimals: null,
