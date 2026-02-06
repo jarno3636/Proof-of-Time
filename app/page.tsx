@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import Nav from "@/components/Nav";
@@ -6,9 +5,22 @@ import dynamic from "next/dynamic";
 import Footer from "@/components/Footer";
 
 /* ---------- Client islands ---------- */
-const RevealRelicsInline = dynamic(() => import("@/components/RevealRelicsInline"), { ssr: false });
-const RelicLegend        = dynamic(() => import("@/components/RelicLegend"),        { ssr: false });
-const BuyButton          = dynamic(() => import("@/components/BuyButton"),          { ssr: false });
+const RevealRelicsInline = dynamic(
+  () => import("@/components/RevealRelicsInline"),
+  { ssr: false }
+);
+const RelicLegend = dynamic(
+  () => import("@/components/RelicLegend"),
+  { ssr: false }
+);
+const BuyButton = dynamic(
+  () => import("@/components/BuyButton"),
+  { ssr: false }
+);
+const POTHourglassMint = dynamic(
+  () => import("@/components/POTHourglassMint"),
+  { ssr: false }
+);
 
 export default function Home() {
   return (
@@ -18,7 +30,7 @@ export default function Home() {
       {/* ---------- Hero ---------- */}
       <section className="mx-auto max-w-6xl px-6 pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-20 pb-12 md:pb-16 flex-grow">
         <div className="grid gap-8 md:grid-cols-2 md:items-start">
-          {/* Headline + CTA */}
+          {/* ---------- Left: Headline ---------- */}
           <div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-black leading-tight tracking-tight text-center md:text-left">
               Claim your <span className="text-zinc-400">time on chain.</span>
@@ -29,12 +41,12 @@ export default function Home() {
               holders into living records of patience, loyalty, and belief.
             </p>
 
-            {/* Inline reveal / verify block */}
+            {/* Inline reveal */}
             <div className="mt-7">
               <RevealRelicsInline />
             </div>
 
-            {/* 🔥 Burn highlight block (replacing old "View Token Launch" button) */}
+            {/* Burn highlight */}
             <div className="mt-5 rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-3 text-xs sm:text-sm">
               <div className="font-semibold text-[#BBA46A]">
                 Supply Update: 100M PøT Burned
@@ -54,32 +66,40 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Trade card (no countdown/share) */}
-          <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
-            <h3 className="text-lg font-semibold text-[#BBA46A]">Trade PøT</h3>
+          {/* ---------- Right: Action Cards ---------- */}
+          <div className="grid gap-6">
+            {/* Trade card */}
+            <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-5 sm:p-6">
+              <h3 className="text-lg font-semibold text-[#BBA46A]">
+                Trade PøT
+              </h3>
 
-            <p className="mt-3 text-sm text-zinc-400">
-              Live on Aerodrome. LP seeded. 500M holder rewards program.
-            </p>
+              <p className="mt-3 text-sm text-zinc-400">
+                Live on Aerodrome. LP seeded. 500M holder rewards program.
+              </p>
 
-            <div className="mt-5">
-              <BuyButton />
+              <div className="mt-5">
+                <BuyButton />
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <a
+                  href="/launch"
+                  className="inline-flex items-center justify-center rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-2.5 text-sm font-semibold text-[#0b0e14] transition"
+                >
+                  Go to Launch
+                </a>
+                <a
+                  href="/pot"
+                  className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
+                >
+                  Holder Rewards (PøT)
+                </a>
+              </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-3">
-              <a
-                href="/launch"
-                className="inline-flex items-center justify-center rounded-xl bg-[#BBA46A] hover:bg-[#d6c289] px-4 py-2.5 text-sm font-semibold text-[#0b0e14] transition"
-              >
-                Go to Launch
-              </a>
-              <a
-                href="/pot"
-                className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-900/40 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:text-zinc-100 transition"
-              >
-                Holder Rewards (PøT)
-              </a>
-            </div>
+            {/* ✅ REAL Mint Card */}
+            <POTHourglassMint />
           </div>
         </div>
       </section>
@@ -111,7 +131,6 @@ export default function Home() {
         </p>
       </section>
 
-      {/* ---------- Footer ---------- */}
       <Footer />
     </main>
   );
