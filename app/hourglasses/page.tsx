@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useReadContract } from "wagmi";
+import Nav from "@/components/Nav";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
 /* ---------- constants ---------- */
@@ -10,14 +11,7 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- env helpers ---------- */
-
-function isInBaseOrFarcaster() {
-  if (typeof navigator === "undefined") return false;
-  return /Warpcast|Farcaster|Base/i.test(navigator.userAgent || "");
-}
-
-/* ---------- share ---------- */
+/* ---------- share (FORCED Warpcast) ---------- */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -25,19 +19,9 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  // Native share (Base / Farcaster)
-  if (navigator.share && isInBaseOrFarcaster()) {
-    navigator.share({
-      title: `Hourglass #${tokenId}`,
-      text,
-      url: SITE_URL,
-    });
-    return;
-  }
-
-  // Browser fallback
   const params = new URLSearchParams();
-  params.set("text", `${text}\n${imageUrl}`);
+  params.set("text", text);
+  params.append("embeds[]", imageUrl);
 
   window.open(
     `https://warpcast.com/~/compose?${params.toString()}`,
@@ -70,28 +54,32 @@ export default function HourglassesPage() {
   const total = Number(supply ?? 0);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12">
-      <h1 className="text-3xl font-black tracking-tight">
-        Proof of Time Hourglasses
-      </h1>
+    <main className="min-h-screen bg-[#0b0e14] text-zinc-100 flex flex-col">
+      <Nav />
 
-      <p className="mt-2 text-sm text-zinc-400 max-w-xl">
-        Fully on-chain hourglasses forged by burning POT.
-        Each one permanently records conviction in time.
-      </p>
+      <section className="mx-auto max-w-6xl px-6 py-12 flex-grow">
+        <h1 className="text-3xl font-black tracking-tight">
+          Proof of Time Hourglasses
+        </h1>
 
-      {/* Grid */}
-      <div className="mt-8 grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {isLoading &&
-          Array.from({ length: 10 }).map((_, i) => (
-            <HourglassSkeleton key={`skeleton-${i}`} />
-          ))}
+        <p className="mt-2 text-sm text-zinc-400 max-w-xl">
+          Fully on-chain hourglasses forged by burning POT.
+          Each one permanently records conviction in time.
+        </p>
 
-        {!isLoading &&
-          Array.from({ length: total }).map((_, i) => (
-            <HourglassCard key={i} tokenId={i + 1} />
-          ))}
-      </div>
+        {/* Grid */}
+        <div className="mt-8 grid gap-3 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {isLoading &&
+            Array.from({ length: 12 }).map((_, i) => (
+              <HourglassSkeleton key={`skeleton-${i}`} />
+            ))}
+
+          {!isLoading &&
+            Array.from({ length: total }).map((_, i) => (
+              <HourglassCard key={i} tokenId={i + 1} />
+            ))}
+        </div>
+      </section>
     </main>
   );
 }
@@ -102,8 +90,8 @@ function HourglassSkeleton() {
   return (
     <div className="rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-2 animate-pulse">
       <div className="aspect-square rounded-lg bg-zinc-800/60" />
-      <div className="mt-2 h-3 w-16 rounded bg-zinc-800/60" />
-      <div className="mt-1 h-2 w-24 rounded bg-zinc-800/50" />
+      <div className="mt-2 h-3 w-14 rounded bg-zinc-800/60" />
+      <div className="mt-1 h-2 w-20 rounded bg-zinc-800/50" />
     </div>
   );
 }
@@ -114,7 +102,7 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Intersection observer for lazy load
+  // Lazy load with intersection observer
   useEffect(() => {
     if (!ref.current) return;
 
@@ -134,7 +122,11 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
 
   return (
     <div ref={ref}>
-      {visible ? <HourglassCardInner tokenId={tokenId} /> : <HourglassSkeleton />}
+      {visible ? (
+        <HourglassCardInner tokenId={tokenId} />
+      ) : (
+        <HourglassSkeleton />
+      )}
     </div>
   );
 }
