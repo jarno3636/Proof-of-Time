@@ -2,24 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
-import {
-  POTHOURGLASS_ABI,
-  POTHOURGLASS_ADDRESS,
-} from "@/lib/pothourglass";
+import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
 /* ---------- constants ---------- */
 
 const SITE_URL = "https://proofoftime.vercel.app";
-const SHARE_LINE =
-  "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
+const SHARE_LINE = "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
 /* ---------- environment helpers ---------- */
 
 function isFarcasterEnv() {
   if (typeof navigator === "undefined") return false;
-  return /Warpcast|Farcaster|FarcasterMini|Base/i.test(
-    navigator.userAgent || ""
-  );
+  return /Warpcast|Farcaster|FarcasterMini|Base/i.test(navigator.userAgent || "");
 }
 
 function shareHourglass(imageUrl: string, tokenId: number) {
@@ -28,8 +22,8 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  // ✅ Native share (Base / Farcaster app)
-  if (navigator.share && isFarcasterEnv()) {
+  // Native share inside Base / FC clients when available
+  if (typeof navigator !== "undefined" && navigator.share && isFarcasterEnv()) {
     navigator
       .share({
         title: `Hourglass #${tokenId}`,
@@ -40,15 +34,12 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     return;
   }
 
-  // ✅ Warpcast / browser fallback
+  // Warpcast compose fallback (works in browsers)
   const params = new URLSearchParams();
   params.set("text", text);
   params.append("embeds[]", imageUrl);
 
-  window.open(
-    `https://warpcast.com/~/compose?${params.toString()}`,
-    "_blank"
-  );
+  window.open(`https://warpcast.com/~/compose?${params.toString()}`, "_blank");
 }
 
 /* ---------- rarity ---------- */
@@ -82,9 +73,7 @@ export default function HourglassesPage() {
     <main className="mx-auto max-w-6xl px-6 py-12">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">
-            Proof of Time Hourglasses
-          </h1>
+          <h1 className="text-3xl font-black tracking-tight">Proof of Time Hourglasses</h1>
           <p className="mt-2 text-sm text-zinc-400 max-w-xl">
             Fully on-chain hourglasses forged by burning POT.
           </p>
@@ -107,11 +96,7 @@ export default function HourglassesPage() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: total }).map((_, i) => (
-          <HourglassCard
-            key={i}
-            tokenId={i + 1}
-            onlyMine={onlyMine}
-          />
+          <HourglassCard key={i} tokenId={i + 1} onlyMine={onlyMine} />
         ))}
       </div>
     </main>
@@ -129,40 +114,48 @@ function HourglassCard({
 }) {
   const { address } = useAccount();
 
-  // ✅ Safe owner lookup ONLY when filtering
-  const { data: owner } = useReadContract({
+  // Only query ownerOf when the filter is ON (prevents tons of calls)
+  const {
+    data: owner,
+    error: ownerError,
+    isLoading: ownerLoading,
+  } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
     functionName: "ownerOf",
     args: [BigInt(tokenId)],
     query: {
       enabled: !!address && onlyMine,
-      retry: false,
-      throwOnError: false,
+      retry: false, // if it errors, don't keep retrying
+      staleTime: 15_000,
     },
   });
 
+  // If filtering and ownerOf errored or is still loading, treat as "not mine"
   const isMine =
     !!address &&
     !!owner &&
+    !ownerError &&
     owner.toLowerCase() === address.toLowerCase();
 
-  // ✅ HARD GUARD: do not render if filtered out
-  if (onlyMine && !isMine) return null;
+  if (onlyMine) {
+    if (ownerLoading) return null;
+    if (ownerError) return null;
+    if (!isMine) return null;
+  }
 
   const { data: uri } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
     functionName: "tokenURI",
     args: [BigInt(tokenId)],
+    query: { staleTime: 60_000 },
   });
 
   const json = useMemo(() => {
     if (!uri) return null;
     try {
-      return JSON.parse(
-        atob(uri.replace("data:application/json;base64,", ""))
-      );
+      return JSON.parse(atob(uri.replace("data:application/json;base64,", "")));
     } catch {
       return null;
     }
@@ -170,9 +163,7 @@ function HourglassCard({
 
   if (!json?.image) return null;
 
-  const bodyTrait = json.attributes?.find(
-    (a: any) => a.trait_type === "Body"
-  )?.value;
+  const bodyTrait = json.attributes?.find((a: any) => a.trait_type === "Body")?.value;
 
   return (
     <div
@@ -194,18 +185,12 @@ function HourglassCard({
         </div>
       )}
 
-      <img
-        src={json.image}
-        alt={`Hourglass #${tokenId}`}
-        className="rounded-lg bg-black"
-      />
+      <img src={json.image} alt={`Hourglass #${tokenId}`} className="rounded-lg bg-black" />
 
       <div className="mt-2 flex items-center justify-between">
         <div className="text-sm font-semibold">
           #{tokenId}
-          {isMine && (
-            <span className="ml-1 text-xs text-[#BBA46A]">• owned</span>
-          )}
+          {isMine && <span className="ml-1 text-xs text-[#BBA46A]">• owned</span>}
         </div>
 
         <button
