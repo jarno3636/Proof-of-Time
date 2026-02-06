@@ -5,30 +5,35 @@ import { useReadContract } from "wagmi";
 import Nav from "@/components/Nav";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
-/* ---------- constants ---------- */
+/* ---------- CONSTANTS ---------- */
 
-const SITE_URL = "https://proofoftime.vercel.app";
+// 🔑 Canonical Farcaster surface (THIS is critical)
+const FARCASTER_MINIAPP_URL =
+  "https://farcaster.xyz/miniapps/-_2261xu85R_/proof-of-time";
+
 const SHARE_LINE =
-  "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
+  "Proof of Time Hourglass\nPatience made permanent";
 
-/* ---------- EXACT SHARE THAT WORKS ---------- */
-/* Same pattern as mint page — do NOT change */
+/* ---------- FARCASTER-SAFE SHARE ---------- */
+/* Same pattern as your mint page — proven to work */
 
-function openFarcasterShare(text: string, imageUrl?: string) {
+function shareHourglass(tokenId: number) {
+  const text =
+    `${SHARE_LINE}\n\n` +
+    `Hourglass #${tokenId}\n` +
+    `${FARCASTER_MINIAPP_URL}`;
+
   const params = new URLSearchParams();
   params.set("text", text);
 
-  if (imageUrl) {
-    params.append("embeds[]", imageUrl);
-  }
-
-  window.open(
-    `https://warpcast.com/~/compose?${params.toString()}`,
-    "_blank"
-  );
+  // ✅ SAME WINDOW
+  // ✅ NO EMBEDS
+  // ✅ NO INTENT ENDPOINT
+  window.location.href =
+    `https://warpcast.com/~/compose?${params.toString()}`;
 }
 
-/* ---------- rarity ---------- */
+/* ---------- RARITY ---------- */
 
 function rarityBadge(body?: string) {
   switch (body) {
@@ -41,7 +46,7 @@ function rarityBadge(body?: string) {
   }
 }
 
-/* ---------- page ---------- */
+/* ---------- PAGE ---------- */
 
 export default function HourglassesPage() {
   const { data: supply, isLoading } = useReadContract({
@@ -66,7 +71,7 @@ export default function HourglassesPage() {
           Each one permanently records conviction in time.
         </p>
 
-        {/* Grid */}
+        {/* GRID */}
         <div className="mt-8 grid gap-3 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {isLoading &&
             Array.from({ length: 12 }).map((_, i) => (
@@ -83,7 +88,7 @@ export default function HourglassesPage() {
   );
 }
 
-/* ---------- skeleton ---------- */
+/* ---------- SKELETON ---------- */
 
 function HourglassSkeleton() {
   return (
@@ -95,7 +100,7 @@ function HourglassSkeleton() {
   );
 }
 
-/* ---------- card ---------- */
+/* ---------- CARD (LAZY LOAD WRAPPER) ---------- */
 
 function HourglassCard({ tokenId }: { tokenId: number }) {
   const [visible, setVisible] = useState(false);
@@ -129,7 +134,7 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
   );
 }
 
-/* ---------- card inner ---------- */
+/* ---------- CARD INNER ---------- */
 
 function HourglassCardInner({ tokenId }: { tokenId: number }) {
   const { data: uri } = useReadContract({
@@ -157,11 +162,6 @@ function HourglassCardInner({ tokenId }: { tokenId: number }) {
     (a: any) => a.trait_type === "Body"
   )?.value;
 
-  const shareText =
-    `${SHARE_LINE}\n\n` +
-    `Hourglass #${tokenId}\n` +
-    `${SITE_URL}/hourglasses`;
-
   return (
     <div className="group relative rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-2 transition hover:border-[#BBA46A]/60 hover:-translate-y-0.5">
       {bodyTrait && (
@@ -186,7 +186,7 @@ function HourglassCardInner({ tokenId }: { tokenId: number }) {
         <div className="text-xs font-semibold">#{tokenId}</div>
 
         <button
-          onClick={() => openFarcasterShare(shareText, json.image)}
+          onClick={() => shareHourglass(tokenId)}
           className="text-[11px] rounded-md border border-zinc-700/60 px-2 py-0.5 text-zinc-300 hover:text-[#BBA46A] hover:border-[#BBA46A]/60 transition"
         >
           Share
