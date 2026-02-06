@@ -1,20 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useMemo } from "react";
+import { useReadContract } from "wagmi";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
 /* ---------- constants ---------- */
 
 const SITE_URL = "https://proofoftime.vercel.app";
-const SHARE_LINE = "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
+const SHARE_LINE =
+  "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- environment helpers ---------- */
+/* ---------- env helpers ---------- */
 
-function isFarcasterEnv() {
+function isInBaseOrFarcaster() {
   if (typeof navigator === "undefined") return false;
-  return /Warpcast|Farcaster|FarcasterMini|Base/i.test(navigator.userAgent || "");
+  return /Warpcast|Farcaster|Base/i.test(navigator.userAgent || "");
 }
+
+/* ---------- share ---------- */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -22,24 +25,24 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  // Native share inside Base / FC clients when available
-  if (typeof navigator !== "undefined" && navigator.share && isFarcasterEnv()) {
-    navigator
-      .share({
-        title: `Hourglass #${tokenId}`,
-        text,
-        url: imageUrl,
-      })
-      .catch(() => {});
+  // ✅ Base app / Farcaster native share (THIS is the fix)
+  if (navigator.share && isInBaseOrFarcaster()) {
+    navigator.share({
+      title: `Hourglass #${tokenId}`,
+      text,
+      url: SITE_URL,
+    });
     return;
   }
 
-  // Warpcast compose fallback (works in browsers)
+  // ✅ Normal browser Warpcast compose
   const params = new URLSearchParams();
-  params.set("text", text);
-  params.append("embeds[]", imageUrl);
+  params.set("text", `${text}\n${imageUrl}`);
 
-  window.open(`https://warpcast.com/~/compose?${params.toString()}`, "_blank");
+  window.open(
+    `https://warpcast.com/~/compose?${params.toString()}`,
+    "_blank"
+  );
 }
 
 /* ---------- rarity ---------- */
@@ -58,9 +61,6 @@ function rarityBadge(body?: string) {
 /* ---------- page ---------- */
 
 export default function HourglassesPage() {
-  const { address } = useAccount();
-  const [onlyMine, setOnlyMine] = useState(false);
-
   const { data: supply } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
@@ -71,32 +71,18 @@ export default function HourglassesPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-12">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight">Proof of Time Hourglasses</h1>
-          <p className="mt-2 text-sm text-zinc-400 max-w-xl">
-            Fully on-chain hourglasses forged by burning POT.
-          </p>
-        </div>
+      <h1 className="text-3xl font-black tracking-tight">
+        Proof of Time Hourglasses
+      </h1>
 
-        {address && (
-          <button
-            onClick={() => setOnlyMine((v) => !v)}
-            className={[
-              "rounded-xl px-4 py-2 text-sm font-semibold transition",
-              onlyMine
-                ? "bg-[#BBA46A] text-[#0b0e14]"
-                : "border border-zinc-700/60 text-zinc-300 hover:border-[#BBA46A]/60",
-            ].join(" ")}
-          >
-            {onlyMine ? "Showing Mine" : "Show My Hourglasses"}
-          </button>
-        )}
-      </div>
+      <p className="mt-2 text-sm text-zinc-400 max-w-xl">
+        Fully on-chain hourglasses forged by burning POT.
+        Each one permanently records conviction in time.
+      </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: total }).map((_, i) => (
-          <HourglassCard key={i} tokenId={i + 1} onlyMine={onlyMine} />
+          <HourglassCard key={i} tokenId={i + 1} />
         ))}
       </div>
     </main>
@@ -105,45 +91,7 @@ export default function HourglassesPage() {
 
 /* ---------- card ---------- */
 
-function HourglassCard({
-  tokenId,
-  onlyMine,
-}: {
-  tokenId: number;
-  onlyMine: boolean;
-}) {
-  const { address } = useAccount();
-
-  // Only query ownerOf when the filter is ON (prevents tons of calls)
-  const {
-    data: owner,
-    error: ownerError,
-    isLoading: ownerLoading,
-  } = useReadContract({
-    address: POTHOURGLASS_ADDRESS,
-    abi: POTHOURGLASS_ABI,
-    functionName: "ownerOf",
-    args: [BigInt(tokenId)],
-    query: {
-      enabled: !!address && onlyMine,
-      retry: false, // if it errors, don't keep retrying
-      staleTime: 15_000,
-    },
-  });
-
-  // If filtering and ownerOf errored or is still loading, treat as "not mine"
-  const isMine =
-    !!address &&
-    !!owner &&
-    !ownerError &&
-    owner.toLowerCase() === address.toLowerCase();
-
-  if (onlyMine) {
-    if (ownerLoading) return null;
-    if (ownerError) return null;
-    if (!isMine) return null;
-  }
-
+function HourglassCard({ tokenId }: { tokenId: number }) {
   const { data: uri } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
@@ -155,7 +103,9 @@ function HourglassCard({
   const json = useMemo(() => {
     if (!uri) return null;
     try {
-      return JSON.parse(atob(uri.replace("data:application/json;base64,", "")));
+      return JSON.parse(
+        atob(uri.replace("data:application/json;base64,", ""))
+      );
     } catch {
       return null;
     }
@@ -163,17 +113,12 @@ function HourglassCard({
 
   if (!json?.image) return null;
 
-  const bodyTrait = json.attributes?.find((a: any) => a.trait_type === "Body")?.value;
+  const bodyTrait = json.attributes?.find(
+    (a: any) => a.trait_type === "Body"
+  )?.value;
 
   return (
-    <div
-      className={[
-        "group relative rounded-xl border bg-zinc-900/40 p-3 transition",
-        isMine
-          ? "border-[#BBA46A] shadow-[0_0_28px_rgba(187,164,106,0.35)]"
-          : "border-zinc-800/70 hover:border-[#BBA46A]/60",
-      ].join(" ")}
-    >
+    <div className="group relative rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-3 transition hover:border-[#BBA46A]/60">
       {bodyTrait && (
         <div
           className={[
@@ -185,13 +130,14 @@ function HourglassCard({
         </div>
       )}
 
-      <img src={json.image} alt={`Hourglass #${tokenId}`} className="rounded-lg bg-black" />
+      <img
+        src={json.image}
+        alt={`Hourglass #${tokenId}`}
+        className="rounded-lg bg-black"
+      />
 
       <div className="mt-2 flex items-center justify-between">
-        <div className="text-sm font-semibold">
-          #{tokenId}
-          {isMine && <span className="ml-1 text-xs text-[#BBA46A]">• owned</span>}
-        </div>
+        <div className="text-sm font-semibold">#{tokenId}</div>
 
         <button
           onClick={() => shareHourglass(json.image, tokenId)}
