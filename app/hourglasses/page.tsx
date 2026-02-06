@@ -3,6 +3,7 @@
 import { useMemo, useEffect, useRef, useState } from "react";
 import { useReadContract } from "wagmi";
 import Nav from "@/components/Nav";
+import POTHourglassMint from "@/components/POTHourglassMint";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
 /* ---------- constants ---------- */
@@ -11,11 +12,9 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE = "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
 /**
- * Share that WORKS in Farcaster mini apps:
- * - Try Farcaster Mini App SDK composeCast first (prevents app-store redirects)
- * - Fallback to warpcast.com compose URL for normal browsers
- *
- * composeCast is the official share mechanism for mini apps.  [oai_citation:2‡miniapps.farcaster.xyz](https://miniapps.farcaster.xyz/docs/sdk/actions/compose-cast)
+ * Farcaster-safe share:
+ * - Uses Mini App SDK when available (no app-store redirect)
+ * - Falls back to Warpcast web compose for browsers
  */
 async function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -23,43 +22,30 @@ async function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  // 1) Farcaster Mini App SDK path (best)
+  // 1) Farcaster Mini App SDK (correct + official)
   try {
-    // Dynamic import so regular browsers don’t bundle/crash if SDK isn’t usable.
     const { sdk } = await import("@farcaster/miniapp-sdk");
 
-    // If we’re inside a Farcaster mini app, this should open the native composer.
-    // If not inside mini app, it may throw and we’ll fall back.
     await sdk.actions.composeCast({
       text,
-      // "embeds" supports URLs (your onchain image data: URLs may work,
-      // but HTTPS URLs are safest for embeds in clients).
       embeds: [imageUrl],
     });
 
     return;
   } catch {
-    // fall through
+    // fall through to browser fallback
   }
 
-  // 2) Browser fallback (works on desktop web / normal mobile browsers)
-  try {
-    const params = new URLSearchParams();
-    params.set("text", text);
+  // 2) Browser fallback
+  const params = new URLSearchParams();
+  params.set("text", text);
+  params.append("embeds[]", imageUrl);
 
-    // Warpcast web compose supports embeds[].
-    // If embeds breaks for any reason, the cast still includes the image URL in text below.
-    params.append("embeds[]", imageUrl);
-
-    const url = `https://warpcast.com/~/compose?${params.toString()}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  } catch {
-    // ultra-fallback: at least copy text into a new tab
-    const url = `https://warpcast.com/~/compose?text=${encodeURIComponent(
-      `${text}\n\n${imageUrl}`
-    )}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
+  window.open(
+    `https://warpcast.com/~/compose?${params.toString()}`,
+    "_blank",
+    "noopener,noreferrer"
+  );
 }
 
 /* ---------- rarity ---------- */
@@ -92,25 +78,30 @@ export default function HourglassesPage() {
       <Nav />
 
       <section className="mx-auto max-w-6xl px-4 sm:px-6 py-10 sm:py-12 flex-grow">
-        <div className="flex items-end justify-between gap-4">
+        {/* Header */}
+        <div className="flex flex-col gap-6">
           <div>
             <h1 className="text-3xl font-black tracking-tight">
               Proof of Time Hourglasses
             </h1>
             <p className="mt-2 text-sm text-zinc-400 max-w-xl">
-              Fully on-chain hourglasses forged by burning POT. Each one
-              permanently records conviction in time.
+              Fully on-chain hourglasses forged by burning POT.
+              Each one permanently records conviction in time.
             </p>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-400">
+          {/* 🔥 Mint Module */}
+          <POTHourglassMint />
+
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
             <span className="rounded-full border border-zinc-800/70 bg-zinc-900/40 px-3 py-1">
-              Minted: <span className="text-zinc-100 font-semibold">{total}</span>
+              Minted:{" "}
+              <span className="text-zinc-100 font-semibold">{total}</span>
             </span>
           </div>
         </div>
 
-        {/* Grid: 3 per row on mobile */}
+        {/* Grid (3 per row on mobile) */}
         <div className="mt-8 grid gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
           {isLoading &&
             Array.from({ length: 18 }).map((_, i) => (
@@ -192,7 +183,7 @@ function HourglassCardInner({ tokenId }: { tokenId: number }) {
     try {
       const raw = uri.startsWith("data:application/json;base64,")
         ? atob(uri.replace("data:application/json;base64,", ""))
-        : uri; // if your contract ever returns a plain JSON string
+        : uri;
       return JSON.parse(raw);
     } catch {
       return null;
@@ -238,7 +229,10 @@ function HourglassCardInner({ tokenId }: { tokenId: number }) {
 
       {Array.isArray(json.attributes) && (
         <div className="mt-1 text-[10px] text-zinc-500 truncate">
-          {json.attributes.map((a: any) => a?.value).filter(Boolean).join(" · ")}
+          {json.attributes
+            .map((a: any) => a?.value)
+            .filter(Boolean)
+            .join(" · ")}
         </div>
       )}
     </div>
