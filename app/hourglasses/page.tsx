@@ -11,7 +11,8 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- Warpcast-safe share ---------- */
+/* ---------- FARCASTER MINI APP SAFE SHARE ---------- */
+/* Uses OFFICIAL intent endpoint — no app store redirects */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -19,24 +20,14 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  const params = new URLSearchParams();
-  params.set("text", text);
-  params.append("embeds[]", imageUrl);
+  const params = new URLSearchParams({
+    text,
+    embeds: imageUrl,
+  });
 
-  const composeUrl = `https://warpcast.com/~/compose?${params.toString()}`;
+  const url = `https://warpcast.com/intent/post?${params.toString()}`;
 
-  const isWarpcast =
-    typeof navigator !== "undefined" &&
-    /Warpcast|Farcaster/i.test(navigator.userAgent || "");
-
-  // ✅ Critical difference
-  if (isWarpcast) {
-    // Same-window navigation prevents app-store redirect
-    window.location.href = composeUrl;
-  } else {
-    // Normal browsers
-    window.open(composeUrl, "_blank", "noopener,noreferrer");
-  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 /* ---------- rarity ---------- */
