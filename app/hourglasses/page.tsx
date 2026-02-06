@@ -13,14 +13,36 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- helpers ---------- */
+/* ---------- environment helpers ---------- */
 
-function shareToFarcaster(imageUrl: string, tokenId: number) {
-  const params = new URLSearchParams();
-  params.set(
-    "text",
-    `${SHARE_LINE}\n\nHourglass #${tokenId}\n${SITE_URL}/hourglasses`
+function isFarcasterEnv() {
+  if (typeof navigator === "undefined") return false;
+  return /Warpcast|Farcaster|FarcasterMini|Base/i.test(
+    navigator.userAgent || ""
   );
+}
+
+function shareHourglass(imageUrl: string, tokenId: number) {
+  const text =
+    `${SHARE_LINE}\n\n` +
+    `Hourglass #${tokenId}\n` +
+    `${SITE_URL}/hourglasses`;
+
+  // ✅ Native share (Base / Farcaster app)
+  if (navigator.share && isFarcasterEnv()) {
+    navigator
+      .share({
+        title: `Hourglass #${tokenId}`,
+        text,
+        url: imageUrl,
+      })
+      .catch(() => {});
+    return;
+  }
+
+  // ✅ Warpcast / browser fallback
+  const params = new URLSearchParams();
+  params.set("text", text);
   params.append("embeds[]", imageUrl);
 
   window.open(
@@ -28,6 +50,8 @@ function shareToFarcaster(imageUrl: string, tokenId: number) {
     "_blank"
   );
 }
+
+/* ---------- rarity ---------- */
 
 function rarityBadge(body?: string) {
   switch (body) {
@@ -68,7 +92,7 @@ export default function HourglassesPage() {
 
         {address && (
           <button
-            onClick={() => setOnlyMine(v => !v)}
+            onClick={() => setOnlyMine((v) => !v)}
             className={[
               "rounded-xl px-4 py-2 text-sm font-semibold transition",
               onlyMine
@@ -105,7 +129,7 @@ function HourglassCard({
 }) {
   const { address } = useAccount();
 
-  /* Only call ownerOf when filter is active */
+  // ✅ Safe owner lookup ONLY when filtering
   const { data: owner } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
@@ -114,14 +138,16 @@ function HourglassCard({
     query: {
       enabled: !!address && onlyMine,
       retry: false,
+      throwOnError: false,
     },
   });
 
   const isMine =
-    onlyMine && address && owner
-      ? owner.toLowerCase() === address.toLowerCase()
-      : false;
+    !!address &&
+    !!owner &&
+    owner.toLowerCase() === address.toLowerCase();
 
+  // ✅ HARD GUARD: do not render if filtered out
   if (onlyMine && !isMine) return null;
 
   const { data: uri } = useReadContract({
@@ -157,7 +183,6 @@ function HourglassCard({
           : "border-zinc-800/70 hover:border-[#BBA46A]/60",
       ].join(" ")}
     >
-      {/* Rarity badge */}
       {bodyTrait && (
         <div
           className={[
@@ -184,7 +209,7 @@ function HourglassCard({
         </div>
 
         <button
-          onClick={() => shareToFarcaster(json.image, tokenId)}
+          onClick={() => shareHourglass(json.image, tokenId)}
           className="text-xs rounded-lg border border-zinc-700/60 px-2 py-1 text-zinc-300 hover:text-[#BBA46A] hover:border-[#BBA46A]/60 transition"
         >
           Share
