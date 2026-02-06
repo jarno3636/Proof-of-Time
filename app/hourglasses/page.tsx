@@ -11,7 +11,14 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- share (FORCED Warpcast) ---------- */
+/* ---------- env ---------- */
+
+function isWarpcast() {
+  if (typeof navigator === "undefined") return false;
+  return /Warpcast|Farcaster/i.test(navigator.userAgent || "");
+}
+
+/* ---------- share (FIXED) ---------- */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -23,10 +30,17 @@ function shareHourglass(imageUrl: string, tokenId: number) {
   params.set("text", text);
   params.append("embeds[]", imageUrl);
 
-  window.open(
-    `https://warpcast.com/~/compose?${params.toString()}`,
-    "_blank"
-  );
+  const composePath = `/~/compose?${params.toString()}`;
+  const composeUrl = `https://warpcast.com${composePath}`;
+
+  // ✅ INSIDE Warpcast → use relative path (NO APP STORE REDIRECT)
+  if (isWarpcast()) {
+    window.location.href = composePath;
+    return;
+  }
+
+  // ✅ Normal web browser
+  window.open(composeUrl, "_blank");
 }
 
 /* ---------- rarity ---------- */
@@ -102,7 +116,6 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Lazy load with intersection observer
   useEffect(() => {
     if (!ref.current) return;
 
