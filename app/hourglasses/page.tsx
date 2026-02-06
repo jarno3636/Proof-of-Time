@@ -11,7 +11,7 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- SHARE (FINAL, BULLETPROOF) ---------- */
+/* ---------- Warpcast-safe share ---------- */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -23,10 +23,20 @@ function shareHourglass(imageUrl: string, tokenId: number) {
   params.set("text", text);
   params.append("embeds[]", imageUrl);
 
-  // ✅ ALWAYS use absolute Warpcast URL
-  const url = `https://warpcast.com/~/compose?${params.toString()}`;
+  const composeUrl = `https://warpcast.com/~/compose?${params.toString()}`;
 
-  window.open(url, "_blank");
+  const isWarpcast =
+    typeof navigator !== "undefined" &&
+    /Warpcast|Farcaster/i.test(navigator.userAgent || "");
+
+  // ✅ Critical difference
+  if (isWarpcast) {
+    // Same-window navigation prevents app-store redirect
+    window.location.href = composeUrl;
+  } else {
+    // Normal browsers
+    window.open(composeUrl, "_blank", "noopener,noreferrer");
+  }
 }
 
 /* ---------- rarity ---------- */
@@ -67,7 +77,6 @@ export default function HourglassesPage() {
           Each one permanently records conviction in time.
         </p>
 
-        {/* Grid */}
         <div className="mt-8 grid gap-3 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {isLoading &&
             Array.from({ length: 12 }).map((_, i) => (
