@@ -11,7 +11,7 @@ import {
 
 const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
-  "Proof of Time Hourglass.\nPatience made permanent.\n\nPOT";
+  "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
 /* ---------- helpers ---------- */
 
@@ -68,7 +68,7 @@ export default function HourglassesPage() {
 
         {address && (
           <button
-            onClick={() => setOnlyMine((v) => !v)}
+            onClick={() => setOnlyMine(v => !v)}
             className={[
               "rounded-xl px-4 py-2 text-sm font-semibold transition",
               onlyMine
@@ -76,7 +76,7 @@ export default function HourglassesPage() {
                 : "border border-zinc-700/60 text-zinc-300 hover:border-[#BBA46A]/60",
             ].join(" ")}
           >
-            {onlyMine ? "Showing My Hourglasses" : "Show My Hourglasses"}
+            {onlyMine ? "Showing Mine" : "Show My Hourglasses"}
           </button>
         )}
       </div>
@@ -105,18 +105,24 @@ function HourglassCard({
 }) {
   const { address } = useAccount();
 
+  /* Only call ownerOf when filter is active */
   const { data: owner } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
     functionName: "ownerOf",
     args: [BigInt(tokenId)],
-    query: { enabled: !!address },
+    query: {
+      enabled: !!address && onlyMine,
+      retry: false,
+    },
   });
 
   const isMine =
-    address && owner
+    onlyMine && address && owner
       ? owner.toLowerCase() === address.toLowerCase()
       : false;
+
+  if (onlyMine && !isMine) return null;
 
   const { data: uri } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
@@ -125,10 +131,8 @@ function HourglassCard({
     args: [BigInt(tokenId)],
   });
 
-  if (onlyMine && !isMine) return null;
-  if (!uri) return null;
-
   const json = useMemo(() => {
+    if (!uri) return null;
     try {
       return JSON.parse(
         atob(uri.replace("data:application/json;base64,", ""))
@@ -149,7 +153,7 @@ function HourglassCard({
       className={[
         "group relative rounded-xl border bg-zinc-900/40 p-3 transition",
         isMine
-          ? "border-[#BBA46A] shadow-[0_0_30px_rgba(187,164,106,0.35)] animate-pulse"
+          ? "border-[#BBA46A] shadow-[0_0_28px_rgba(187,164,106,0.35)]"
           : "border-zinc-800/70 hover:border-[#BBA46A]/60",
       ].join(" ")}
     >
@@ -165,21 +169,17 @@ function HourglassCard({
         </div>
       )}
 
-      {/* Image */}
       <img
         src={json.image}
         alt={`Hourglass #${tokenId}`}
         className="rounded-lg bg-black"
       />
 
-      {/* Meta */}
       <div className="mt-2 flex items-center justify-between">
         <div className="text-sm font-semibold">
           #{tokenId}
           {isMine && (
-            <span className="ml-1 text-xs text-[#BBA46A]">
-              • owned
-            </span>
+            <span className="ml-1 text-xs text-[#BBA46A]">• owned</span>
           )}
         </div>
 
@@ -191,7 +191,6 @@ function HourglassCard({
         </button>
       </div>
 
-      {/* Traits */}
       {Array.isArray(json.attributes) && (
         <div className="mt-1 text-[11px] text-zinc-500">
           {json.attributes.map((a: any) => a.value).join(" · ")}
