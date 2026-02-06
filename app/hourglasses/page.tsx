@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useReadContract } from "wagmi";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
 
@@ -25,7 +25,7 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     `Hourglass #${tokenId}\n` +
     `${SITE_URL}/hourglasses`;
 
-  // ✅ Base app / Farcaster native share (THIS is the fix)
+  // Native share (Base / Farcaster)
   if (navigator.share && isInBaseOrFarcaster()) {
     navigator.share({
       title: `Hourglass #${tokenId}`,
@@ -35,7 +35,7 @@ function shareHourglass(imageUrl: string, tokenId: number) {
     return;
   }
 
-  // ✅ Normal browser Warpcast compose
+  // Browser fallback
   const params = new URLSearchParams();
   params.set("text", `${text}\n${imageUrl}`);
 
@@ -61,7 +61,7 @@ function rarityBadge(body?: string) {
 /* ---------- page ---------- */
 
 export default function HourglassesPage() {
-  const { data: supply } = useReadContract({
+  const { data: supply, isLoading } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
     functionName: "totalSupply",
@@ -80,18 +80,68 @@ export default function HourglassesPage() {
         Each one permanently records conviction in time.
       </p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {Array.from({ length: total }).map((_, i) => (
-          <HourglassCard key={i} tokenId={i + 1} />
-        ))}
+      {/* Grid */}
+      <div className="mt-8 grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {isLoading &&
+          Array.from({ length: 10 }).map((_, i) => (
+            <HourglassSkeleton key={`skeleton-${i}`} />
+          ))}
+
+        {!isLoading &&
+          Array.from({ length: total }).map((_, i) => (
+            <HourglassCard key={i} tokenId={i + 1} />
+          ))}
       </div>
     </main>
+  );
+}
+
+/* ---------- skeleton ---------- */
+
+function HourglassSkeleton() {
+  return (
+    <div className="rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-2 animate-pulse">
+      <div className="aspect-square rounded-lg bg-zinc-800/60" />
+      <div className="mt-2 h-3 w-16 rounded bg-zinc-800/60" />
+      <div className="mt-1 h-2 w-24 rounded bg-zinc-800/50" />
+    </div>
   );
 }
 
 /* ---------- card ---------- */
 
 function HourglassCard({ tokenId }: { tokenId: number }) {
+  const [visible, setVisible] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  // Intersection observer for lazy load
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref}>
+      {visible ? <HourglassCardInner tokenId={tokenId} /> : <HourglassSkeleton />}
+    </div>
+  );
+}
+
+/* ---------- card inner ---------- */
+
+function HourglassCardInner({ tokenId }: { tokenId: number }) {
   const { data: uri } = useReadContract({
     address: POTHOURGLASS_ADDRESS,
     abi: POTHOURGLASS_ABI,
@@ -111,14 +161,14 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
     }
   }, [uri]);
 
-  if (!json?.image) return null;
+  if (!json?.image) return <HourglassSkeleton />;
 
   const bodyTrait = json.attributes?.find(
     (a: any) => a.trait_type === "Body"
   )?.value;
 
   return (
-    <div className="group relative rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-3 transition hover:border-[#BBA46A]/60">
+    <div className="group relative rounded-xl border border-zinc-800/70 bg-zinc-900/40 p-2 transition hover:border-[#BBA46A]/60 hover:-translate-y-0.5">
       {bodyTrait && (
         <div
           className={[
@@ -133,22 +183,23 @@ function HourglassCard({ tokenId }: { tokenId: number }) {
       <img
         src={json.image}
         alt={`Hourglass #${tokenId}`}
-        className="rounded-lg bg-black"
+        loading="lazy"
+        className="aspect-square rounded-lg bg-black object-contain"
       />
 
-      <div className="mt-2 flex items-center justify-between">
-        <div className="text-sm font-semibold">#{tokenId}</div>
+      <div className="mt-1 flex items-center justify-between">
+        <div className="text-xs font-semibold">#{tokenId}</div>
 
         <button
           onClick={() => shareHourglass(json.image, tokenId)}
-          className="text-xs rounded-lg border border-zinc-700/60 px-2 py-1 text-zinc-300 hover:text-[#BBA46A] hover:border-[#BBA46A]/60 transition"
+          className="text-[11px] rounded-md border border-zinc-700/60 px-2 py-0.5 text-zinc-300 hover:text-[#BBA46A] hover:border-[#BBA46A]/60 transition"
         >
           Share
         </button>
       </div>
 
       {Array.isArray(json.attributes) && (
-        <div className="mt-1 text-[11px] text-zinc-500">
+        <div className="mt-1 text-[10px] text-zinc-500 truncate">
           {json.attributes.map((a: any) => a.value).join(" · ")}
         </div>
       )}
