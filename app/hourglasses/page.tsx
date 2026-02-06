@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { useReadContract } from "wagmi";
 import Nav from "@/components/Nav";
 import { POTHOURGLASS_ABI, POTHOURGLASS_ADDRESS } from "@/lib/pothourglass";
@@ -11,14 +11,7 @@ const SITE_URL = "https://proofoftime.vercel.app";
 const SHARE_LINE =
   "Proof of Time Hourglass\nPatience made permanent\n\nPOT";
 
-/* ---------- env ---------- */
-
-function isWarpcast() {
-  if (typeof navigator === "undefined") return false;
-  return /Warpcast|Farcaster/i.test(navigator.userAgent || "");
-}
-
-/* ---------- share (FIXED) ---------- */
+/* ---------- SHARE (FINAL, BULLETPROOF) ---------- */
 
 function shareHourglass(imageUrl: string, tokenId: number) {
   const text =
@@ -30,17 +23,10 @@ function shareHourglass(imageUrl: string, tokenId: number) {
   params.set("text", text);
   params.append("embeds[]", imageUrl);
 
-  const composePath = `/~/compose?${params.toString()}`;
-  const composeUrl = `https://warpcast.com${composePath}`;
+  // ✅ ALWAYS use absolute Warpcast URL
+  const url = `https://warpcast.com/~/compose?${params.toString()}`;
 
-  // ✅ INSIDE Warpcast → use relative path (NO APP STORE REDIRECT)
-  if (isWarpcast()) {
-    window.location.href = composePath;
-    return;
-  }
-
-  // ✅ Normal web browser
-  window.open(composeUrl, "_blank");
+  window.open(url, "_blank");
 }
 
 /* ---------- rarity ---------- */
