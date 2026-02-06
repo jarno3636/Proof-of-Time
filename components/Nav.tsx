@@ -1,4 +1,3 @@
-// components/Nav.tsx
 "use client";
 
 import Link from "next/link";
@@ -37,13 +36,16 @@ export default function Nav() {
     if (insideFarcaster && farcasterConn) {
       try {
         await connectAsync({ connector: farcasterConn });
-      } catch {}
+      } catch {
+        // silent fail (expected sometimes in Farcaster env)
+      }
     }
   };
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-black/20 bg-black/5 border-b border-white/10">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
+        {/* Brand */}
         <Link
           href="/"
           className="text-xl font-semibold tracking-wide hover:text-[#d6c289] transition"
@@ -51,6 +53,7 @@ export default function Nav() {
           <span className="text-[#BBA46A]">⟡</span> Proof of Time
         </Link>
 
+        {/* Menu toggle */}
         <button
           onClick={() => setOpen((s) => !s)}
           className="ml-2 inline-flex items-center gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900/40 hover:bg-zinc-800/50 px-3 py-2 text-sm font-semibold text-zinc-200 transition"
@@ -60,6 +63,7 @@ export default function Nav() {
           Menu ▾
         </button>
 
+        {/* Wallet connect */}
         <div className="ml-auto">
           <ConnectButton.Custom>
             {({
@@ -73,24 +77,33 @@ export default function Nav() {
             }) => {
               const ready = mounted && authenticationStatus !== "loading";
               const connected = ready && account && chain;
+
               const onClick = async () => {
                 await handleConnect();
                 openConnectModal?.();
               };
 
-              return !ready ? (
-                <button className={baseBtn} disabled aria-busy="true">
-                  Connecting…
-                </button>
-              ) : !connected ? (
-                <button
-                  onClick={onClick}
-                  className={baseBtn}
-                  aria-label="Connect Wallet"
-                >
-                  Connect Wallet
-                </button>
-              ) : (
+              if (!ready) {
+                return (
+                  <button className={baseBtn} disabled aria-busy="true">
+                    Connecting…
+                  </button>
+                );
+              }
+
+              if (!connected) {
+                return (
+                  <button
+                    onClick={onClick}
+                    className={baseBtn}
+                    aria-label="Connect Wallet"
+                  >
+                    Connect Wallet
+                  </button>
+                );
+              }
+
+              return (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={openChainModal}
@@ -113,6 +126,7 @@ export default function Nav() {
         </div>
       </div>
 
+      {/* Dropdown menu */}
       {open && (
         <div id="site-menu" className="mx-auto max-w-6xl px-4 pb-4">
           <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-3 grid gap-2 sm:grid-cols-2">
@@ -123,8 +137,21 @@ export default function Nav() {
             >
               Launch
             </Link>
-            <Link href="/pot" className={item} onClick={() => setOpen(false)}>
+
+            <Link
+              href="/pot"
+              className={item}
+              onClick={() => setOpen(false)}
+            >
               PoT
+            </Link>
+
+            <Link
+              href="/hourglasses"
+              className={item}
+              onClick={() => setOpen(false)}
+            >
+              Hourglasses
             </Link>
           </div>
         </div>
