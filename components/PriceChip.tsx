@@ -91,7 +91,7 @@ export default function PriceChip({
 
   const [data, setData] = useState<PoolData>(EMPTY_POOL_DATA);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    apiUrl ? "loading" : "error"
+    "loading"
   );
 
   useEffect(() => {
@@ -101,13 +101,17 @@ export default function PriceChip({
       return;
     }
 
+    // This is the important TypeScript fix.
+    // After the null check, store apiUrl as a guaranteed string.
+    const url: string = apiUrl;
+
     let cancelled = false;
 
     async function loadPool() {
       try {
         setStatus((current) => (current === "ready" ? "ready" : "loading"));
 
-        const res = await fetch(apiUrl, {
+        const res = await fetch(url, {
           headers: {
             accept: "application/json",
           },
