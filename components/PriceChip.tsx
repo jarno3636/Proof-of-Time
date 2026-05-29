@@ -15,12 +15,22 @@ type PoolData = {
   liquidityUsd: number | null;
 };
 
-function parsePoolId(poolId: string) {
+type ParsedPoolId = {
+  network: string;
+  poolAddress: string;
+};
+
+const EMPTY_POOL_DATA: PoolData = {
+  priceUsd: null,
+  change24h: null,
+  volume24h: null,
+  liquidityUsd: null,
+};
+
+function parsePoolId(poolId: string): ParsedPoolId | null {
   const [network, poolAddress] = poolId.split("/");
 
-  if (!network || !poolAddress) {
-    return null;
-  }
+  if (!network || !poolAddress) return null;
 
   return {
     network,
@@ -28,12 +38,17 @@ function parsePoolId(poolId: string) {
   };
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function compactUsd(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "—";
   }
 
-  if (value < 0.01) {
+  if (value > 0 && value < 0.01) {
     return `$${value.toFixed(8).replace(/0+$/, "").replace(/\.$/, "")}`;
   }
 
@@ -61,41 +76,43 @@ export default function PriceChip({
 }: PriceChipProps) {
   const parsed = useMemo(() => parsePoolId(poolId), [poolId]);
 
-  const [data, setData] = useState<PoolData>({
-    priceUsd: null,
-    change24h: null,
-    volume24h: null,
-    liquidityUsd: null,
-  });
+  const network = parsed?.network ?? null;
+  const poolAddress = parsed?.poolAddress ?? null;
 
+  const geckoUrl =
+    network && poolAddress
+      ? `https://www.geckoterminal.com/${network}/pools/${poolAddress}`
+      : "https://www.geckoterminal.com/";
+
+  const apiUrl =
+    network && poolAddress
+      ? `https://api.geckoterminal.com/api/v2/networks/${network}/pools/${poolAddress}`
+      : null;
+
+  const [data, setData] = useState<PoolData>(EMPTY_POOL_DATA);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading"
+    apiUrl ? "loading" : "error"
   );
 
   useEffect(() => {
-    if (!parsed) {
+    if (!apiUrl) {
+      setData(EMPTY_POOL_DATA);
       setStatus("error");
       return;
     }
 
-    const controller = new AbortController();
+    let cancelled = false;
 
     async function loadPool() {
       try {
-        setStatus("loading");
+        setStatus((current) => (current === "ready" ? "ready" : "loading"));
 
-        const res = await fetch(
-          `https://api.geckoterminal.com/api/v2/networks/${parsed.network}/pools/${parsed.poolAddress}`,
-          {
-            signal: controller.signal,
-            headers: {
-              accept: "application/json",
-            },
-            next: {
-              revalidate: 30,
-            } as RequestInit["next"],
-          } as RequestInit
-        );
+        const res = await fetch(apiUrl, {
+          headers: {
+            accept: "application/json",
+          },
+          cache: "no-store",
+        });
 
         if (!res.ok) {
           throw new Error(`GeckoTerminal request failed: ${res.status}`);
@@ -104,22 +121,21 @@ export default function PriceChip({
         const json = await res.json();
         const attrs = json?.data?.attributes;
 
-        const priceUsd = Number(attrs?.base_token_price_usd);
-        const change24h = Number(attrs?.price_change_percentage?.h24);
-        const volume24h = Number(attrs?.volume_usd?.h24);
-        const liquidityUsd = Number(attrs?.reserve_in_usd);
+        if (cancelled) return;
 
         setData({
-          priceUsd: Number.isFinite(priceUsd) ? priceUsd : null,
-          change24h: Number.isFinite(change24h) ? change24h : null,
-          volume24h: Number.isFinite(volume24h) ? volume24h : null,
-          liquidityUsd: Number.isFinite(liquidityUsd) ? liquidityUsd : null,
+          priceUsd: toFiniteNumber(attrs?.base_token_price_usd),
+          change24h: toFiniteNumber(attrs?.price_change_percentage?.h24),
+          volume24h: toFiniteNumber(attrs?.volume_usd?.h24),
+          liquidityUsd: toFiniteNumber(attrs?.reserve_in_usd),
         });
 
         setStatus("ready");
       } catch (err) {
-        if (controller.signal.aborted) return;
-        console.error(err);
+        if (cancelled) return;
+
+        console.error("PriceChip fetch failed:", err);
+        setData(EMPTY_POOL_DATA);
         setStatus("error");
       }
     }
@@ -129,16 +145,12 @@ export default function PriceChip({
     const interval = window.setInterval(loadPool, 30_000);
 
     return () => {
-      controller.abort();
+      cancelled = true;
       window.clearInterval(interval);
     };
-  }, [parsed]);
+  }, [apiUrl]);
 
   const isUp = (data.change24h ?? 0) >= 0;
-
-  const geckoUrl = parsed
-    ? `https://www.geckoterminal.com/${parsed.network}/pools/${parsed.poolAddress}`
-    : "https://www.geckoterminal.com/";
 
   if (variant === "hero") {
     return (
@@ -181,6 +193,7 @@ export default function PriceChip({
             <div className="text-[11px] uppercase tracking-wide text-zinc-500">
               Volume 24h
             </div>
+
             <div className="mt-1 text-sm font-bold text-zinc-200">
               ${compactNumber(data.volume24h)}
             </div>
@@ -190,6 +203,7 @@ export default function PriceChip({
             <div className="text-[11px] uppercase tracking-wide text-zinc-500">
               Liquidity
             </div>
+
             <div className="mt-1 text-sm font-bold text-zinc-200">
               ${compactNumber(data.liquidityUsd)}
             </div>
@@ -210,9 +224,18 @@ export default function PriceChip({
       rel="noopener noreferrer"
       className="inline-flex items-center gap-2 rounded-full border border-[#BBA46A]/30 bg-[#BBA46A]/10 px-3 py-1.5 text-xs font-bold text-[#d6c289] transition hover:border-[#BBA46A]/60"
     >
-      <span className="h-2 w-2 rounded-full bg-[#BBA46A]" />
+      <span
+        className={`h-2 w-2 rounded-full ${
+          status === "error" ? "bg-zinc-500" : "bg-[#BBA46A]"
+        }`}
+      />
+
       <span>
-        {status === "loading" ? "Loading price…" : `PØT ${compactUsd(data.priceUsd)}`}
+        {status === "loading"
+          ? "Loading price…"
+          : status === "error"
+          ? "Price unavailable"
+          : `PØT ${compactUsd(data.priceUsd)}`}
       </span>
     </a>
   );
